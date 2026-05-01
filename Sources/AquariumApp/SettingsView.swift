@@ -113,6 +113,9 @@ private struct BatteryRow: View {
 private struct AppSelectionPanel: View {
     let controller: AquariumController
     @State private var selectedAppID: String?
+    private var hasValidAppSelection: Bool {
+        selectedAppID != nil && controller.config.allowedApps.contains { $0.id == selectedAppID }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -126,7 +129,7 @@ private struct AppSelectionPanel: View {
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedAppID = app.id
+                                selectedAppID = (selectedAppID == app.id) ? nil : app.id
                             }
                             if app.id != controller.config.allowedApps.last?.id {
                                 Divider()
@@ -169,13 +172,23 @@ private struct AppSelectionPanel: View {
                         .frame(width: 24, height: 18)
                 }
                 .buttonStyle(.plain)
-                .disabled(controller.config.allowedApps.isEmpty || selectedAppID == nil)
+                .disabled(!hasValidAppSelection)
                 .controlSize(.small)
 
                 Spacer()
             }
             .padding(.horizontal, 4)
             .frame(height: 24)
+        }
+        .onAppear {
+            if let selectedAppID, !controller.config.allowedApps.contains(where: { $0.id == selectedAppID }) {
+                self.selectedAppID = nil
+            }
+        }
+        .onChange(of: controller.config.allowedApps) { _, apps in
+            if let selectedAppID, !apps.contains(where: { $0.id == selectedAppID }) {
+                self.selectedAppID = nil
+            }
         }
         .overlay(
             RoundedRectangle(cornerRadius: 6)
@@ -189,6 +202,9 @@ private struct CLIProcessSelectionPanel: View {
     @State private var draftProcessName: String?
     @State private var selectedProcessID: String?
     @FocusState private var draftIsFocused: Bool
+    private var hasValidProcessSelection: Bool {
+        selectedProcessID != nil && controller.config.allowedCLIProcesses.contains { $0.id == selectedProcessID }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -202,7 +218,7 @@ private struct CLIProcessSelectionPanel: View {
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedProcessID = process.id
+                                selectedProcessID = (selectedProcessID == process.id) ? nil : process.id
                             }
                             if process.id != controller.config.allowedCLIProcesses.last?.id {
                                 Divider().padding(.leading, 10)
@@ -264,7 +280,7 @@ private struct CLIProcessSelectionPanel: View {
                         .frame(width: 24, height: 18)
                 }
                 .buttonStyle(.borderless)
-                .disabled(draftProcessName == nil && (controller.config.allowedCLIProcesses.isEmpty || selectedProcessID == nil))
+                .disabled(draftProcessName != nil ? false : !hasValidProcessSelection)
                 .controlSize(.small)
 
                 Spacer()
@@ -279,6 +295,16 @@ private struct CLIProcessSelectionPanel: View {
         .onChange(of: draftIsFocused) { _, focused in
             guard !focused else { return }
             finishDraft()
+        }
+        .onAppear {
+            if let selectedProcessID, !controller.config.allowedCLIProcesses.contains(where: { $0.id == selectedProcessID }) {
+                self.selectedProcessID = nil
+            }
+        }
+        .onChange(of: controller.config.allowedCLIProcesses) { _, processes in
+            if let selectedProcessID, !processes.contains(where: { $0.id == selectedProcessID }) {
+                self.selectedProcessID = nil
+            }
         }
     }
 
