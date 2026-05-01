@@ -112,6 +112,7 @@ private struct BatteryRow: View {
 
 private struct AppSelectionPanel: View {
     let controller: AquariumController
+    @State private var selectedAppID: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -121,11 +122,12 @@ private struct AppSelectionPanel: View {
                         ForEach(controller.config.allowedApps) { app in
                             AppSelectionRow(
                                 app: app,
-                                isOn: Binding(
-                                    get: { app.enabled },
-                                    set: { controller.setAppEnabled(app, enabled: $0) }
-                                )
+                                isSelected: selectedAppID == app.id
                             )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedAppID = app.id
+                            }
                             if app.id != controller.config.allowedApps.last?.id {
                                 Divider()
                                     .padding(.leading, 46)
@@ -158,13 +160,16 @@ private struct AppSelectionPanel: View {
                 Divider().frame(height: 14)
 
                 Button {
-                    controller.removeLastApp()
+                    if let id = selectedAppID {
+                        controller.removeApp(id: id)
+                        selectedAppID = nil
+                    }
                 } label: {
                     Image(systemName: "minus")
                         .frame(width: 24, height: 18)
                 }
                 .buttonStyle(.plain)
-                .disabled(controller.config.allowedApps.isEmpty)
+                .disabled(controller.config.allowedApps.isEmpty || selectedAppID == nil)
                 .controlSize(.small)
 
                 Spacer()
@@ -182,6 +187,7 @@ private struct AppSelectionPanel: View {
 private struct CLIProcessSelectionPanel: View {
     let controller: AquariumController
     @State private var draftProcessName: String?
+    @State private var selectedProcessID: String?
     @FocusState private var draftIsFocused: Bool
 
     var body: some View {
@@ -192,11 +198,12 @@ private struct CLIProcessSelectionPanel: View {
                         ForEach(controller.config.allowedCLIProcesses) { process in
                             CLIProcessRow(
                                 process: process,
-                                isOn: Binding(
-                                    get: { process.enabled },
-                                    set: { controller.setCLIProcessEnabled(process, enabled: $0) }
-                                )
+                                isSelected: selectedProcessID == process.id
                             )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedProcessID = process.id
+                            }
                             if process.id != controller.config.allowedCLIProcesses.last?.id {
                                 Divider().padding(.leading, 10)
                             }
@@ -247,14 +254,17 @@ private struct CLIProcessSelectionPanel: View {
                     if draftProcessName != nil {
                         draftProcessName = nil
                     } else {
-                        controller.removeLastCLIProcess()
+                        if let id = selectedProcessID {
+                            controller.removeCLIProcess(id: id)
+                            selectedProcessID = nil
+                        }
                     }
                 } label: {
                     Image(systemName: "minus")
                         .frame(width: 24, height: 18)
                 }
                 .buttonStyle(.borderless)
-                .disabled(controller.config.allowedCLIProcesses.isEmpty && draftProcessName == nil)
+                .disabled(draftProcessName == nil && (controller.config.allowedCLIProcesses.isEmpty || selectedProcessID == nil))
                 .controlSize(.small)
 
                 Spacer()
@@ -299,7 +309,7 @@ private struct CLIProcessSelectionPanel: View {
 
 private struct CLIProcessRow: View {
     let process: AllowedCLIProcess
-    @Binding var isOn: Bool
+    let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -309,12 +319,11 @@ private struct CLIProcessRow: View {
             Text(process.name)
                 .lineLimit(1)
             Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.checkbox)
         }
-        .padding(.horizontal, 8)
+        .padding(6)
         .frame(height: 30)
+        .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+        .padding(.horizontal, 8)
     }
 }
 
@@ -341,7 +350,7 @@ private struct CLIProcessDraftRow: View {
 
 private struct AppSelectionRow: View {
     let app: AllowedApp
-    @Binding var isOn: Bool
+    let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -351,11 +360,9 @@ private struct AppSelectionRow: View {
             Text(app.name)
                 .lineLimit(1)
             Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.checkbox)
         }
         .padding(.horizontal, 8)
         .frame(height: 34)
+        .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
     }
 }

@@ -118,6 +118,12 @@ final class AquariumController {
         }
     }
 
+    func removeApp(id: String) {
+        update { config in
+            config.allowedApps.removeAll { $0.executableName == id }
+        }
+    }
+
     func setAppEnabled(_ app: AllowedApp, enabled: Bool) {
         update { config in
             guard let index = config.allowedApps.firstIndex(where: { $0.executableName == app.executableName }) else { return }
@@ -139,6 +145,12 @@ final class AquariumController {
         guard !config.allowedCLIProcesses.isEmpty else { return }
         update { config in
             _ = config.allowedCLIProcesses.popLast()
+        }
+    }
+
+    func removeCLIProcess(id: String) {
+        update { config in
+            config.allowedCLIProcesses.removeAll { $0.name == id }
         }
     }
 
