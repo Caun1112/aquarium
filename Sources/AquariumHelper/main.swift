@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CoreGraphics
 
 @_silgen_name("proc_listpids")
 func procListPIDs(_ type: UInt32, _ typeinfo: UInt32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
@@ -172,9 +173,9 @@ final class AquariumPolicyDaemon {
             return
         }
 
-        if lidClosed && lastLidClosed != true {
+        if lidClosed {
             dimBrightnessToBlack()
-        } else if !lidClosed && lastLidClosed == true {
+        } else if lastLidClosed == true {
             restoreBrightness()
         }
     }
@@ -203,7 +204,6 @@ final class AquariumPolicyDaemon {
     private func startBatteryGateAllows(_ config: AquariumConfig, batteryPercent: Int?) -> Bool {
         guard config.batteryGateEnabled else { return true }
         guard let percent = batteryPercent else {
-            log("battery unavailable; allowing start gate")
             return true
         }
         return percent >= config.minimumBatteryPercent
@@ -212,7 +212,6 @@ final class AquariumPolicyDaemon {
     private func shouldAutoDisable(_ config: AquariumConfig, batteryPercent: Int?) -> Bool {
         guard config.enabled, config.autoDisableBatteryEnabled else { return false }
         guard let percent = batteryPercent else {
-            log("battery unavailable; skipping auto-disable")
             return false
         }
         return percent < config.autoDisableBatteryPercent
@@ -358,46 +357,128 @@ private func commandContainsAppPath(_ command: String, appPath: String) -> Bool 
 
 private func batteryPercent() -> Int? {
     let output = run("/usr/bin/pmset", ["-g", "batt"]).output
-    guard let percentRange = output.range(of: #"(\d+)%"#, options: .regularExpression) else { return nil }
+    guard let percentRange = output.range(of: #"(\d+)%"#, options: .regularExpression) else {
+        log("battery parse failed from pmset output: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
+        return nil
+    }
     return Int(output[percentRange].dropLast())
 }
 
 private func dimBrightnessToBlack() {
-    guard AquariumRuntimeState.loadBrightness() == nil else {
-        _ = DisplayServicesSetBrightness(1, 0)
-        log("brightness already saved; dimmed without overwriting saved value")
+    let displays = onlineDisplayIDs()
+    guard !displays.isEmpty else {
+        log("brightness dim skipped; no online displays")
         return
     }
 
-    var brightness: Float = 1
-    let getResult = DisplayServicesGetBrightness(1, &brightness)
-    guard getResult == 0 else {
-        log("brightness read failed -> \(getResult)")
+    if !AquariumRuntimeState.loadBrightnessByDisplay().isEmpty {
+        setBrightness(0, for: displays)
         return
     }
 
-    AquariumRuntimeState.saveBrightness(brightness)
-    _ = DisplayServicesSetBrightness(1, 0)
-    log("brightness dimmed from \(brightness)")
+    var savedBrightness: [UInt32: Float] = [:]
+    for display in displays {
+        guard let brightness = brightness(for: display) else { continue }
+        savedBrightness[display] = brightness
+    }
+
+    guard !savedBrightness.isEmpty else {
+        log("brightness dim skipped; brightness read failed for displays \(displays)")
+        return
+    }
+
+    AquariumRuntimeState.saveBrightnessByDisplay(savedBrightness)
+    setBrightness(0, for: displays)
+    let summary = savedBrightness
+        .map { "\($0.key)=\($0.value)" }
+        .sorted()
+        .joined(separator: ",")
+    log("brightness dimmed displays \(summary)")
 }
 
 private func restoreBrightness() {
-    guard let brightness = AquariumRuntimeState.loadBrightness() else { return }
-    _ = DisplayServicesSetBrightness(1, brightness)
+    let savedBrightness = AquariumRuntimeState.loadBrightnessByDisplay()
+    guard !savedBrightness.isEmpty else { return }
+
+    for (display, brightness) in savedBrightness {
+        let status = DisplayServicesSetBrightness(display, brightness)
+        if status != 0 {
+            log("brightness restore failed display=\(display) status=\(status)")
+        }
+    }
+
     AquariumRuntimeState.clearBrightness()
-    log("brightness restored to \(brightness)")
+    log("brightness restored for \(savedBrightness.count) display(s)")
+}
+
+private func onlineDisplayIDs() -> [UInt32] {
+    var count: UInt32 = 0
+    var status = CGGetOnlineDisplayList(0, nil, &count)
+    guard status == .success, count > 0 else {
+        log("display list count failed -> \(status.rawValue)")
+        return []
+    }
+
+    var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+    status = CGGetOnlineDisplayList(count, &displays, &count)
+    guard status == .success else {
+        log("display list failed -> \(status.rawValue)")
+        return []
+    }
+
+    var onlineDisplays: [UInt32] = []
+    for index in 0..<Int(count) {
+        let display = displays[index]
+        if CGDisplayIsBuiltin(display) != 0 || CGDisplayIsActive(display) != 0 {
+            onlineDisplays.append(UInt32(display))
+        }
+    }
+    return onlineDisplays
+}
+
+private func brightness(for display: UInt32) -> Float? {
+    var brightness: Float = 1
+    let status = DisplayServicesGetBrightness(display, &brightness)
+    guard status == 0 else {
+        log("brightness read failed display=\(display) status=\(status)")
+        return nil
+    }
+    return brightness
+}
+
+private func setBrightness(_ value: Float, for displays: [UInt32]) {
+    for display in displays {
+        let status = DisplayServicesSetBrightness(display, value)
+        if status != 0 {
+            log("brightness set failed display=\(display) value=\(value) status=\(status)")
+        }
+    }
 }
 
 enum AquariumRuntimeState {
     static let path = "/Library/Application Support/Aquarium/brightness-before-lid-close"
 
-    static func saveBrightness(_ value: Float) {
-        try? String(value).write(toFile: path, atomically: true, encoding: .utf8)
+    static func saveBrightnessByDisplay(_ values: [UInt32: Float]) {
+        let encoded = Dictionary(uniqueKeysWithValues: values.map { (String($0.key), $0.value) })
+        guard let data = try? JSONEncoder().encode(encoded) else { return }
+        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
-    static func loadBrightness() -> Float? {
-        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-        return Float(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+    static func loadBrightnessByDisplay() -> [UInt32: Float] {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return [:] }
+        if let encoded = try? JSONDecoder().decode([String: Float].self, from: data) {
+            return Dictionary(uniqueKeysWithValues: encoded.compactMap { key, value in
+                guard let display = UInt32(key) else { return nil }
+                return (display, value)
+            })
+        }
+
+        if let raw = String(data: data, encoding: .utf8),
+           let brightness = Float(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return [1: brightness]
+        }
+
+        return [:]
     }
 
     static func clearBrightness() {
@@ -428,7 +509,17 @@ case "status":
     }
     print("No Aquarium config at \(configPath)")
     exit(1)
+case "diagnose":
+    print("batteryPercent=\(batteryPercent().map(String.init) ?? "unknown")")
+    print("lidClosed=\(isLidClosed())")
+    let displays = onlineDisplayIDs()
+    print("onlineDisplays=\(displays)")
+    for display in displays {
+        let currentBrightness = brightness(for: display).map { String($0) } ?? "unreadable"
+        print("display \(display) brightness=\(currentBrightness)")
+    }
+    exit(0)
 default:
-    print("usage: aquarium-helper daemon|status [--config path]")
+    print("usage: aquarium-helper daemon|status|diagnose [--config path]")
     exit(64)
 }

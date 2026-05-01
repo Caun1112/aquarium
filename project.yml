@@ -46,4 +46,4 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.aquarium.helper
         CODE_SIGN_ENTITLEMENTS: Resources/AquariumHelper/AquariumHelper.entitlements
         ENABLE_HARDENED_RUNTIME: YES
-        OTHER_LDFLAGS: "-F/System/Library/PrivateFrameworks -framework DisplayServices"
+        OTHER_LDFLAGS: "-F/System/Library/PrivateFrameworks -framework DisplayServices -framework CoreGraphics"
