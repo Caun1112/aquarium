@@ -9,3 +9,5 @@ Build from source with `make build`, then run the debug app with `make open`. In
 For a release build, run `make package`. The packaged app is written to `.build/Aquarium-0.1.0.zip`.
 
 Aquarium requires macOS 14 or newer. The default safety settings only start above 20% battery and auto-disable below 10%.
+
+The current release is not notarized, so macOS Gatekeeper may block the first launch. Open System Settings after the warning and allow Aquarium from Privacy & Security, or right-click Aquarium and choose Open.
