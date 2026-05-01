@@ -20,9 +20,9 @@ public struct AquariumConfig: Codable, Equatable {
         allowedApps: [AllowedApp] = [],
         allowedCLIProcesses: [AllowedCLIProcess] = [],
         turnOffBrightnessWhenLidClosed: Bool = true,
-        batteryGateEnabled: Bool = false,
+        batteryGateEnabled: Bool = true,
         minimumBatteryPercent: Int = 20,
-        autoDisableBatteryEnabled: Bool = false,
+        autoDisableBatteryEnabled: Bool = true,
         autoDisableBatteryPercent: Int = 10,
         launchAtLogin: Bool = false
     ) {
@@ -72,9 +72,9 @@ public struct AquariumConfig: Codable, Equatable {
         allowedApps = try container.decodeIfPresent([AllowedApp].self, forKey: .allowedApps) ?? []
         allowedCLIProcesses = try container.decodeIfPresent([AllowedCLIProcess].self, forKey: .allowedCLIProcesses) ?? []
         turnOffBrightnessWhenLidClosed = try container.decodeIfPresent(Bool.self, forKey: .turnOffBrightnessWhenLidClosed) ?? true
-        batteryGateEnabled = try container.decodeIfPresent(Bool.self, forKey: .batteryGateEnabled) ?? false
+        batteryGateEnabled = try container.decodeIfPresent(Bool.self, forKey: .batteryGateEnabled) ?? true
         minimumBatteryPercent = try container.decodeIfPresent(Int.self, forKey: .minimumBatteryPercent) ?? 20
-        autoDisableBatteryEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoDisableBatteryEnabled) ?? false
+        autoDisableBatteryEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoDisableBatteryEnabled) ?? true
         autoDisableBatteryPercent = try container.decodeIfPresent(Int.self, forKey: .autoDisableBatteryPercent) ?? 10
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         normalizeForSave(previous: nil)

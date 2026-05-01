@@ -5,8 +5,8 @@
   "allowedApps": [],
   "allowedCLIProcesses": [],
   "turnOffBrightnessWhenLidClosed": true,
-  "batteryGateEnabled": false,
+  "batteryGateEnabled": true,
   "minimumBatteryPercent": 20,
-  "autoDisableBatteryEnabled": false,
+  "autoDisableBatteryEnabled": true,
   "autoDisableBatteryPercent": 10
 }

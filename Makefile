@@ -1,18 +1,32 @@
 PROJECT := Aquarium.xcodeproj
 SCHEME := Aquarium
 CONFIGURATION ?= Debug
+VERSION ?= 0.1.0
 DERIVED_DATA := .build/DerivedData
 ARCHIVE_PATH := .build/Aquarium.xcarchive
 APP_PATH := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/Aquarium.app
+RELEASE_APP_PATH := $(DERIVED_DATA)/Build/Products/Release/Aquarium.app
 HELPER_PATH := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/aquarium-helper
+PACKAGE_DIR := .build/package
+RELEASE_ZIP := .build/Aquarium-$(VERSION).zip
 
-.PHONY: generate build clean archive install-helper uninstall-helper open
+.PHONY: generate build release package clean archive install-helper uninstall-helper open
 
 generate:
 	xcodegen generate
 
 build: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIGURATION) -derivedDataPath $(DERIVED_DATA) build
+
+release: generate
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release -derivedDataPath $(DERIVED_DATA) build
+
+package: release
+	rm -rf "$(PACKAGE_DIR)" "$(RELEASE_ZIP)"
+	mkdir -p "$(PACKAGE_DIR)"
+	cp -R "$(RELEASE_APP_PATH)" "$(PACKAGE_DIR)/Aquarium.app"
+	ditto -c -k --keepParent "$(PACKAGE_DIR)/Aquarium.app" "$(RELEASE_ZIP)"
+	@echo "Created $(RELEASE_ZIP)"
 
 archive: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Release -archivePath $(ARCHIVE_PATH) archive

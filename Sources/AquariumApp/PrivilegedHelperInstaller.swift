@@ -15,6 +15,14 @@ enum PrivilegedHelperInstaller {
     static let configDestination = AquariumConfig.defaultPath
 
     static func isInstalled() -> Bool {
+        guard bundledFilesExist(),
+              FileManager.default.fileExists(atPath: helperDestination),
+              FileManager.default.fileExists(atPath: daemonPlistDestination),
+              bundledHelperMatchesInstalled(),
+              bundledPlistMatchesInstalled() else {
+            return false
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = ["print", "system/\(label)"]
@@ -28,6 +36,34 @@ enum PrivilegedHelperInstaller {
         } catch {
             return false
         }
+    }
+
+    private static func bundledFilesExist() -> Bool {
+        Bundle.main.url(forResource: "com.aquarium.helper", withExtension: nil) != nil
+            && Bundle.main.url(forResource: "com.aquarium.helper", withExtension: "plist") != nil
+            && Bundle.main.url(forResource: "default-config", withExtension: "json") != nil
+    }
+
+    private static func bundledHelperMatchesInstalled() -> Bool {
+        guard let helper = Bundle.main.url(forResource: "com.aquarium.helper", withExtension: nil) else {
+            return false
+        }
+        return fileContentsMatch(helper.path, helperDestination)
+    }
+
+    private static func bundledPlistMatchesInstalled() -> Bool {
+        guard let plist = Bundle.main.url(forResource: "com.aquarium.helper", withExtension: "plist") else {
+            return false
+        }
+        return fileContentsMatch(plist.path, daemonPlistDestination)
+    }
+
+    private static func fileContentsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        guard let left = try? Data(contentsOf: URL(fileURLWithPath: lhs)),
+              let right = try? Data(contentsOf: URL(fileURLWithPath: rhs)) else {
+            return false
+        }
+        return left == right
     }
 
     static func installFromBundle() throws {

@@ -1,0 +1,34 @@
+<svg width="1400" height="1040" viewBox="0 0 1400 1040" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="1040" fill="#111318"/>
+  <rect x="60" y="70" width="1280" height="900" rx="46" fill="#1F2937"/>
+  <rect x="150" y="105" width="1100" height="820" rx="26" fill="#262626"/>
+  <circle cx="192" cy="145" r="15" fill="#FF5F57"/>
+  <circle cx="256" cy="145" r="15" fill="#FFBD2E"/>
+  <circle cx="320" cy="145" r="15" fill="#595959"/>
+  <text x="390" y="160" fill="#D6D6D6" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="38" font-weight="700">Aquarium</text>
+  <text x="235" y="255" fill="#E8E8E8" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="42" font-weight="700">Aquarium</text>
+  <rect x="990" y="210" width="50" height="50" rx="14" fill="#2789FF"/>
+  <path d="M1003 234L1017 248L1030 220" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1050" y="255" fill="#E0E0E0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="39" font-weight="600">Enabled</text>
+  <line x1="178" y1="390" x2="1220" y2="390" stroke="#444" stroke-width="2"/>
+  <rect x="178" y="315" width="50" height="50" rx="14" fill="#2789FF"/>
+  <path d="M191 339L205 353L218 325" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="250" y="354" fill="#E0E0E0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="500">Launch at Login</text>
+  <rect x="178" y="430" width="50" height="50" rx="14" fill="#2789FF"/>
+  <path d="M191 454L205 468L218 440" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="250" y="469" fill="#E0E0E0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="500">Prevent sleep when lid is closed</text>
+  <rect x="178" y="500" width="50" height="50" rx="14" fill="#2789FF"/>
+  <path d="M191 524L205 538L218 510" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="250" y="539" fill="#E0E0E0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="500">Turn brightness off when lid is closed</text>
+  <line x1="178" y1="580" x2="1220" y2="580" stroke="#444" stroke-width="2"/>
+  <rect x="178" y="620" width="50" height="50" rx="14" fill="#2789FF"/>
+  <path d="M191 644L205 658L218 630" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="250" y="659" fill="#E0E0E0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="500">Only while selected apps or processes are running</text>
+  <rect x="178" y="700" width="1042" height="175" rx="14" fill="#202020" stroke="#3D4654" stroke-width="3"/>
+  <path d="M180 714C180 707.373 185.373 702 192 702H1206C1212.63 702 1218 707.373 1218 714V780H180V714Z" fill="#253550"/>
+  <rect x="194" y="720" width="50" height="50" rx="14" fill="#2C2C2C"/>
+  <circle cx="219" cy="745" r="19" fill="#7866FF"/>
+  <text x="285" y="756" fill="#E5E5E5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="34" font-weight="700">Codex</text>
+  <line x1="178" y1="875" x2="1220" y2="875" stroke="#444" stroke-width="2"/>
+  <text x="235" y="945" fill="#E0E0E0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="36" font-weight="600">Battery defaults: start above 20%, auto-disable below 10%</text>
+</svg>
