@@ -2,7 +2,7 @@
 
 Aquarium is a small macOS menu bar utility for keeping a Mac awake when the lid is closed. It can also turn the internal display brightness down while closed, limit the behavior to selected apps or processes, and stop itself around battery thresholds.
 
-<img width="420" height="577" alt="image" src="https://github.com/user-attachments/assets/f3958dfd-788f-4fec-bdb5-59534ca65ade" />
+<img width="420" height="577" alt="image" src="https://github.com/user-attachments/assets/e40350c9-e3ee-4e7c-8592-887410454ed6" />
 
 
 ## Install
