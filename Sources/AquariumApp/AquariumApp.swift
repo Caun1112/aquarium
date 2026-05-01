@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var configPollTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         configureStatusIcon(for: item)
         item.menu = makeMenu()
         statusItem = item
