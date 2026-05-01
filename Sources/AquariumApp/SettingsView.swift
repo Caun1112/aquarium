@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @State private var controller = AquariumController.shared
+    @State private var selectedFilterItem: FilterSelection?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -28,12 +29,12 @@ struct SettingsView: View {
 
             Divider()
 
-            Toggle("Only while selected apps or CLI processes are running", isOn: binding(\.appFilterEnabled))
+            Toggle("Only while selected apps or processes are running", isOn: binding(\.appFilterEnabled))
                 .toggleStyle(.checkbox)
             if controller.config.appFilterEnabled {
-                AppSelectionPanel(controller: controller)
+                AppSelectionPanel(controller: controller, selectedFilterItem: $selectedFilterItem)
                     .frame(height: 104)
-                CLIProcessSelectionPanel(controller: controller)
+                CLIProcessSelectionPanel(controller: controller, selectedFilterItem: $selectedFilterItem)
                     .frame(height: 124)
 
                 Divider()
@@ -87,6 +88,12 @@ struct SettingsView: View {
     }
 }
 
+private enum FilterSelection: Equatable {
+    case app(String)
+    case cliProcess(String)
+    case cliDraft
+}
+
 private struct BatteryRow: View {
     let title: String
     @Binding var isOn: Bool
@@ -112,9 +119,10 @@ private struct BatteryRow: View {
 
 private struct AppSelectionPanel: View {
     let controller: AquariumController
-    @State private var selectedAppID: String?
+    @Binding var selectedFilterItem: FilterSelection?
     private var hasValidAppSelection: Bool {
-        selectedAppID != nil && controller.config.allowedApps.contains { $0.id == selectedAppID }
+        guard case .app(let selectedAppID) = selectedFilterItem else { return false }
+        return controller.config.allowedApps.contains { $0.id == selectedAppID }
     }
 
     var body: some View {
@@ -125,16 +133,15 @@ private struct AppSelectionPanel: View {
                         ForEach(controller.config.allowedApps) { app in
                             AppSelectionRow(
                                 app: app,
-                                isSelected: selectedAppID == app.id,
-                                isEnabled: appEnabledBinding(app)
+                                isSelected: selectedFilterItem == .app(app.id)
                             )
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedAppID = app.id
-                            }
+                            .simultaneousGesture(TapGesture().onEnded {
+                                selectedFilterItem = .app(app.id)
+                            })
                             if app.id != controller.config.allowedApps.last?.id {
                                 Divider()
-                                    .padding(.leading, 56)
+                                    .padding(.leading, 38)
                             }
                         }
                     }
@@ -163,9 +170,9 @@ private struct AppSelectionPanel: View {
                 Divider().frame(height: 14)
 
                 Button("Remove selected application", systemImage: "minus") {
-                    if let id = selectedAppID {
+                    if case .app(let id) = selectedFilterItem {
                         controller.removeApp(id: id)
-                        selectedAppID = nil
+                        selectedFilterItem = nil
                     }
                 }
                 .labelStyle(.iconOnly)
@@ -184,36 +191,28 @@ private struct AppSelectionPanel: View {
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         )
         .onAppear {
-            if let selectedAppID, !controller.config.allowedApps.contains(where: { $0.id == selectedAppID }) {
-                self.selectedAppID = nil
+            if case .app(let selectedAppID) = selectedFilterItem,
+               !controller.config.allowedApps.contains(where: { $0.id == selectedAppID }) {
+                selectedFilterItem = nil
             }
         }
         .onChange(of: controller.config.allowedApps) { _, apps in
-            if let selectedAppID, !apps.contains(where: { $0.id == selectedAppID }) {
-                self.selectedAppID = nil
+            if case .app(let selectedAppID) = selectedFilterItem,
+               !apps.contains(where: { $0.id == selectedAppID }) {
+                selectedFilterItem = nil
             }
         }
-    }
-
-    private func appEnabledBinding(_ app: AllowedApp) -> Binding<Bool> {
-        Binding(
-            get: {
-                controller.config.allowedApps.first(where: { $0.id == app.id })?.enabled ?? app.enabled
-            },
-            set: { enabled in
-                controller.setAppEnabled(app, enabled: enabled)
-            }
-        )
     }
 }
 
 private struct CLIProcessSelectionPanel: View {
     let controller: AquariumController
+    @Binding var selectedFilterItem: FilterSelection?
     @State private var draftProcessName: String?
-    @State private var selectedProcessID: String?
     @FocusState private var draftIsFocused: Bool
     private var hasValidProcessSelection: Bool {
-        selectedProcessID != nil && controller.config.allowedCLIProcesses.contains { $0.id == selectedProcessID }
+        guard case .cliProcess(let selectedProcessID) = selectedFilterItem else { return false }
+        return controller.config.allowedCLIProcesses.contains { $0.id == selectedProcessID }
     }
 
     var body: some View {
@@ -224,28 +223,28 @@ private struct CLIProcessSelectionPanel: View {
                         ForEach(controller.config.allowedCLIProcesses) { process in
                             CLIProcessRow(
                                 process: process,
-                                isSelected: selectedProcessID == process.id,
-                                isEnabled: processEnabledBinding(process)
+                                isSelected: selectedFilterItem == .cliProcess(process.id)
                             )
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedProcessID = process.id
-                            }
+                            .simultaneousGesture(TapGesture().onEnded {
+                                draftProcessName = nil
+                                selectedFilterItem = .cliProcess(process.id)
+                            })
                             if process.id != controller.config.allowedCLIProcesses.last?.id {
-                                Divider().padding(.leading, 56)
+                                Divider().padding(.leading, 34)
                             }
                         }
 
                         if draftProcessName != nil {
                             if !controller.config.allowedCLIProcesses.isEmpty {
-                                Divider().padding(.leading, 56)
+                                Divider().padding(.leading, 34)
                             }
                             CLIProcessDraftRow(
                                 name: Binding(
                                     get: { draftProcessName ?? "" },
                                     set: { draftProcessName = $0 }
                                 ),
-                                isSelected: true,
+                                isSelected: selectedFilterItem == .cliDraft,
                                 isFocused: $draftIsFocused,
                                 onCommit: commitDraft
                             )
@@ -254,7 +253,7 @@ private struct CLIProcessSelectionPanel: View {
                 }
 
                 if controller.config.allowedCLIProcesses.isEmpty && draftProcessName == nil {
-                    Text("No CLI processes selected")
+                    Text("No processes selected")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -267,31 +266,30 @@ private struct CLIProcessSelectionPanel: View {
             Divider()
 
             HStack(spacing: 4) {
-                Button("Add CLI process", systemImage: "plus") {
+                Button("Add process", systemImage: "plus") {
                     beginDraft()
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .help("Add CLI process")
+                .help("Add process")
 
                 Divider().frame(height: 14)
 
-                Button("Remove selected CLI process", systemImage: "minus") {
-                    if draftProcessName != nil {
+                Button("Remove selected process", systemImage: "minus") {
+                    if selectedFilterItem == .cliDraft {
                         draftProcessName = nil
-                    } else {
-                        if let id = selectedProcessID {
-                            controller.removeCLIProcess(id: id)
-                            selectedProcessID = nil
-                        }
+                        selectedFilterItem = nil
+                    } else if case .cliProcess(let id) = selectedFilterItem {
+                        controller.removeCLIProcess(id: id)
+                        selectedFilterItem = nil
                     }
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
-                .disabled(draftProcessName != nil ? false : !hasValidProcessSelection)
+                .disabled(selectedFilterItem == .cliDraft ? false : !hasValidProcessSelection)
                 .controlSize(.small)
-                .help("Remove selected CLI process")
+                .help("Remove selected process")
 
                 Spacer()
             }
@@ -302,18 +300,21 @@ private struct CLIProcessSelectionPanel: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         )
-        .onChange(of: draftIsFocused) { _, focused in
-            guard !focused else { return }
-            finishDraft()
-        }
         .onAppear {
-            if let selectedProcessID, !controller.config.allowedCLIProcesses.contains(where: { $0.id == selectedProcessID }) {
-                self.selectedProcessID = nil
+            if case .cliProcess(let selectedProcessID) = selectedFilterItem,
+               !controller.config.allowedCLIProcesses.contains(where: { $0.id == selectedProcessID }) {
+                selectedFilterItem = nil
+            }
+        }
+        .onChange(of: selectedFilterItem) { _, selection in
+            if selection != .cliDraft {
+                draftProcessName = nil
             }
         }
         .onChange(of: controller.config.allowedCLIProcesses) { _, processes in
-            if let selectedProcessID, !processes.contains(where: { $0.id == selectedProcessID }) {
-                self.selectedProcessID = nil
+            if case .cliProcess(let selectedProcessID) = selectedFilterItem,
+               !processes.contains(where: { $0.id == selectedProcessID }) {
+                selectedFilterItem = nil
             }
         }
     }
@@ -322,50 +323,34 @@ private struct CLIProcessSelectionPanel: View {
         if draftProcessName == nil {
             draftProcessName = ""
         }
-        selectedProcessID = nil
+        selectedFilterItem = .cliDraft
         DispatchQueue.main.async {
             draftIsFocused = true
         }
     }
 
     private func commitDraft() {
-        guard let draftProcessName else { return }
-        controller.addCLIProcess(named: draftProcessName)
+        guard let rawName = draftProcessName else { return }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.draftProcessName = nil
-    }
+        draftIsFocused = false
 
-    private func finishDraft() {
-        guard let draftProcessName else { return }
-        if draftProcessName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            self.draftProcessName = nil
-        } else {
-            commitDraft()
+        guard !name.isEmpty else {
+            selectedFilterItem = nil
+            return
         }
-    }
 
-    private func processEnabledBinding(_ process: AllowedCLIProcess) -> Binding<Bool> {
-        Binding(
-            get: {
-                controller.config.allowedCLIProcesses.first(where: { $0.id == process.id })?.enabled ?? process.enabled
-            },
-            set: { enabled in
-                controller.setCLIProcessEnabled(process, enabled: enabled)
-            }
-        )
+        controller.addCLIProcess(named: name)
+        selectedFilterItem = .cliProcess(name)
     }
 }
 
 private struct CLIProcessRow: View {
     let process: AllowedCLIProcess
     let isSelected: Bool
-    @Binding var isEnabled: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            Toggle("Allow \(process.name)", isOn: $isEnabled)
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-                .frame(width: 18)
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -387,11 +372,6 @@ private struct CLIProcessDraftRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Toggle("Allow new CLI process", isOn: .constant(true))
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-                .disabled(true)
-                .frame(width: 18)
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -411,14 +391,9 @@ private struct CLIProcessDraftRow: View {
 private struct AppSelectionRow: View {
     let app: AllowedApp
     let isSelected: Bool
-    @Binding var isEnabled: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            Toggle("Allow \(app.name)", isOn: $isEnabled)
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-                .frame(width: 18)
             Image(nsImage: NSWorkspace.shared.icon(forFile: app.path))
                 .resizable()
                 .frame(width: 22, height: 22)

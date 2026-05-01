@@ -21,7 +21,7 @@ install-helper: build
 	sudo install -d -m 755 "/Library/PrivilegedHelperTools"
 	sudo install -m 755 "$(HELPER_PATH)" "/Library/PrivilegedHelperTools/com.aquarium.helper"
 	sudo install -d -m 775 -o root -g staff "/Library/Application Support/Aquarium"
-	sudo install -m 664 -o root -g staff "Resources/AquariumHelper/default-config.json" "/Library/Application Support/Aquarium/config.json"
+	[ -f "/Library/Application Support/Aquarium/config.json" ] || sudo install -m 664 -o root -g staff "Resources/AquariumHelper/default-config.json" "/Library/Application Support/Aquarium/config.json"
 	sudo install -m 644 "Resources/AquariumHelper/com.aquarium.helper.plist" "/Library/LaunchDaemons/com.aquarium.helper.plist"
 	sudo launchctl bootout system /Library/LaunchDaemons/com.aquarium.helper.plist 2>/dev/null || true
 	sudo launchctl bootstrap system /Library/LaunchDaemons/com.aquarium.helper.plist

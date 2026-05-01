@@ -1,4 +1,13 @@
 import Foundation
+import Darwin
+
+@_silgen_name("proc_listpids")
+func procListPIDs(_ type: UInt32, _ typeinfo: UInt32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
+
+@_silgen_name("proc_pidpath")
+func procPIDPath(_ pid: Int32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: UInt32) -> Int32
+
+private let procPIDPathInfoMaxSize = 4096
 
 @_silgen_name("DisplayServicesGetBrightness")
 func DisplayServicesGetBrightness(_ display: UInt32, _ brightness: UnsafeMutablePointer<Float>) -> Int32
@@ -11,8 +20,26 @@ struct CommandResult {
     let output: String
 }
 
+final class CommandOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func store(_ newData: Data) {
+        lock.lock()
+        data = newData
+        lock.unlock()
+    }
+
+    func load() -> Data {
+        lock.lock()
+        let current = data
+        lock.unlock()
+        return current
+    }
+}
+
 @discardableResult
-func run(_ executable: String, _ arguments: [String]) -> CommandResult {
+func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 3) -> CommandResult {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = arguments
@@ -22,8 +49,32 @@ func run(_ executable: String, _ arguments: [String]) -> CommandResult {
 
     do {
         try process.run()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let finished = DispatchSemaphore(value: 0)
+        let outputRead = DispatchSemaphore(value: 0)
+        let output = CommandOutput()
+
+        DispatchQueue.global(qos: .utility).async {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            output.store(data)
+            outputRead.signal()
+        }
+
+        DispatchQueue.global(qos: .utility).async {
+            process.waitUntilExit()
+            finished.signal()
+        }
+
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            if finished.wait(timeout: .now() + 1) == .timedOut {
+                process.interrupt()
+            }
+            _ = outputRead.wait(timeout: .now() + 1)
+            return CommandResult(status: 124, output: "Timed out running \(executable)")
+        }
+
+        _ = outputRead.wait(timeout: .now() + 1)
+        let data = output.load()
         return CommandResult(status: process.terminationStatus, output: String(decoding: data, as: UTF8.self))
     } catch {
         return CommandResult(status: 127, output: String(describing: error))
@@ -33,8 +84,8 @@ func run(_ executable: String, _ arguments: [String]) -> CommandResult {
 final class AquariumPolicyDaemon {
     private let configPath: String
     private var appliedDisablesleep: Bool?
+    private var lastDisablesleepApply: Date?
     private var lastLidClosed: Bool?
-    private var brightnessBeforeLidClose: Float?
     private var sessionStarted = false
 
     init(configPath: String) {
@@ -76,9 +127,17 @@ final class AquariumPolicyDaemon {
     }
 
     private func applyClamshellSleepDisabled(_ disabled: Bool) {
-        guard appliedDisablesleep != disabled else { return }
+        if appliedDisablesleep == disabled,
+           let lastDisablesleepApply,
+           Date().timeIntervalSince(lastDisablesleepApply) < 30 {
+            return
+        }
+
         let result = run("/usr/bin/pmset", ["-a", "disablesleep", disabled ? "1" : "0"])
-        appliedDisablesleep = result.status == 0 ? disabled : appliedDisablesleep
+        if result.status == 0 {
+            appliedDisablesleep = disabled
+            lastDisablesleepApply = Date()
+        }
         log("pmset disablesleep \(disabled ? "1" : "0") -> \(result.status)")
     }
 
@@ -87,9 +146,7 @@ final class AquariumPolicyDaemon {
         defer { lastLidClosed = lidClosed }
 
         guard active, config.turnOffBrightnessWhenLidClosed else {
-            if brightnessBeforeLidClose != nil {
-                restoreBrightness()
-            }
+            restoreBrightness()
             return
         }
 
@@ -102,13 +159,23 @@ final class AquariumPolicyDaemon {
 
     private func appGateAllows(_ config: AquariumConfig) -> Bool {
         guard config.appFilterEnabled else { return true }
-        let apps = config.allowedApps.filter(\.enabled)
-        let cliProcesses = config.allowedCLIProcesses.filter(\.enabled)
-        guard !apps.isEmpty || !cliProcesses.isEmpty else { return false }
+        let apps = config.allowedApps
+        let cliProcesses = config.allowedCLIProcesses
+        guard !apps.isEmpty || !cliProcesses.isEmpty else {
+            log("filter enabled but no apps or processes are selected")
+            return false
+        }
 
-        let running = Set(runningExecutableNames())
-        return apps.contains { running.contains($0.executableName) }
-            || cliProcesses.contains { running.contains($0.name) }
+        let runningProcesses = runningProcessSnapshot()
+
+        let appMatches = apps.contains { app in
+            runningProcesses.contains { $0.matches(app: app) }
+        }
+        let processMatches = cliProcesses.contains { selectedProcess in
+            runningProcesses.contains { $0.matches(processName: selectedProcess.name) }
+        }
+
+        return appMatches || processMatches
     }
 
     private func startBatteryGateAllows(_ config: AquariumConfig) -> Bool {
@@ -129,12 +196,136 @@ private func isLidClosed() -> Bool {
     return output.contains("\"AppleClamshellState\" = Yes")
 }
 
-private func runningExecutableNames() -> [String] {
-    let result = run("/bin/ps", ["-axo", "comm="])
-    return result.output
+private struct RunningProcess {
+    let pid: Int
+    let executablePath: String
+    let command: String
+
+    var executableName: String {
+        URL(fileURLWithPath: executablePath).lastPathComponent
+    }
+
+    var commandExecutablePath: String? {
+        guard let first = command.split(whereSeparator: \.isWhitespace).first else { return nil }
+        return String(first)
+    }
+
+    var usableCommandExecutablePath: String? {
+        guard let commandExecutablePath else { return nil }
+        if commandExecutablePath.hasPrefix("/") {
+            return FileManager.default.fileExists(atPath: commandExecutablePath) ? commandExecutablePath : nil
+        }
+        guard !commandExecutablePath.contains("/") else { return nil }
+        return commandExecutablePath
+    }
+
+    var commandExecutableName: String? {
+        guard let path = usableCommandExecutablePath else { return nil }
+        return URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    func matches(app: AllowedApp) -> Bool {
+        let appPath = standardizedPath(app.path)
+        let executableNames = Set([
+            app.executableName,
+            URL(fileURLWithPath: app.path).deletingPathExtension().lastPathComponent
+        ].map(normalizedProcessName).filter { !$0.isEmpty })
+
+        if executableNames.contains(normalizedProcessName(executableName)) {
+            return true
+        }
+
+        if let commandExecutableName,
+           executableNames.contains(normalizedProcessName(commandExecutableName)) {
+            return true
+        }
+
+        return pathIsInsideApp(executablePath, appPath: appPath)
+            || commandContainsAppPath(command, appPath: appPath)
+    }
+
+    func matches(processName rawName: String) -> Bool {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+
+        if name.contains("/") {
+            let selectedPath = standardizedPath(name)
+            return standardizedPath(executablePath) == selectedPath
+                || standardizedPath(usableCommandExecutablePath ?? "") == selectedPath
+        }
+
+        let selectedName = normalizedProcessName(name)
+        return normalizedProcessName(executableName) == selectedName
+            || normalizedProcessName(commandExecutableName ?? "") == selectedName
+    }
+}
+
+private func runningProcessSnapshot() -> [RunningProcess] {
+    let commands = runningCommandsByPID()
+
+    return runningExecutablePathsByPID().map { pid, executablePath in
+        RunningProcess(
+            pid: pid,
+            executablePath: executablePath,
+            command: commands[pid] ?? executablePath
+        )
+    }
+}
+
+private func runningCommandsByPID() -> [Int: String] {
+    let result = run("/bin/ps", ["-axo", "pid=,command="])
+    return Dictionary(uniqueKeysWithValues: result.output
         .split(separator: "\n")
-        .map { URL(fileURLWithPath: String($0)).lastPathComponent }
-        .filter { !$0.isEmpty }
+        .compactMap { line -> (Int, String)? in
+            let parts = line.split(maxSplits: 1, whereSeparator: \.isWhitespace).map(String.init)
+            guard parts.count == 2, let pid = Int(parts[0]) else {
+                return nil
+            }
+            return (pid, parts[1])
+        })
+}
+
+private func runningExecutablePathsByPID() -> [(Int, String)] {
+    let probeSize = procListPIDs(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+    guard probeSize > 0 else { return [] }
+
+    var pids = [pid_t](repeating: 0, count: Int(probeSize) / MemoryLayout<pid_t>.size)
+    let bytes = pids.withUnsafeMutableBytes { buffer in
+        procListPIDs(UInt32(PROC_ALL_PIDS), 0, buffer.baseAddress, Int32(buffer.count))
+    }
+    guard bytes > 0 else { return [] }
+
+    return pids.prefix(Int(bytes) / MemoryLayout<pid_t>.size).compactMap { pid -> (Int, String)? in
+        guard pid > 0 else { return nil }
+        var pathBuffer = [CChar](repeating: 0, count: procPIDPathInfoMaxSize)
+        let pathLength = pathBuffer.withUnsafeMutableBytes { buffer in
+            procPIDPath(pid, buffer.baseAddress, UInt32(buffer.count))
+        }
+        guard pathLength > 0 else { return nil }
+        let path = String(decoding: pathBuffer.prefix(Int(pathLength)).map(UInt8.init(bitPattern:)), as: UTF8.self)
+        guard !path.isEmpty else { return nil }
+        return (Int(pid), path)
+    }
+}
+
+private func normalizedProcessName(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+}
+
+private func standardizedPath(_ value: String) -> String {
+    URL(fileURLWithPath: value).standardizedFileURL.path
+}
+
+private func pathIsInsideApp(_ candidatePath: String, appPath: String) -> Bool {
+    let path = standardizedPath(candidatePath)
+    return path == appPath || path.hasPrefix(appPath + "/")
+}
+
+private func commandContainsAppPath(_ command: String, appPath: String) -> Bool {
+    command
+        .split(whereSeparator: \.isWhitespace)
+        .map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) }
+        .contains { pathIsInsideApp($0, appPath: appPath) }
 }
 
 private func batteryPercent() -> Int? {
@@ -144,6 +335,12 @@ private func batteryPercent() -> Int? {
 }
 
 private func dimBrightnessToBlack() {
+    guard AquariumRuntimeState.loadBrightness() == nil else {
+        _ = DisplayServicesSetBrightness(1, 0)
+        log("brightness already saved; dimmed without overwriting saved value")
+        return
+    }
+
     var brightness: Float = 1
     let getResult = DisplayServicesGetBrightness(1, &brightness)
     guard getResult == 0 else {
