@@ -51,13 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(versionMenuItem())
         menu.addItem(.separator())
         menu.addItem(menuItem("Quit Aquarium", action: #selector(NSApplication.terminate(_:)), target: NSApp))
-        menu.items.forEach { $0.target = self }
         return menu
     }
 
     private func menuItem(_ title: String, action: Selector, target: AnyObject? = nil) -> NSMenuItem {
-        let item = NSMenuItem()
-        item.view = MenuActionRow(title: title, target: target ?? self, action: action)
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.keyEquivalentModifierMask = []
+        item.target = target ?? self
+        item.indentationLevel = 0
         return item
     }
 
@@ -65,8 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
         let suffix = build.map { " (\($0))" } ?? ""
-        let item = NSMenuItem()
-        item.view = MenuRowLabel(title: "Version \(version)\(suffix)")
+        let item = NSMenuItem(title: "Version \(version)\(suffix)", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        item.indentationLevel = 0
         return item
     }
 
@@ -118,90 +120,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openGitHub() {
         guard let url = URL(string: "https://github.com/ZimengXiong/aquarium") else { return }
         NSWorkspace.shared.open(url)
-    }
-}
-
-private final class MenuActionRow: NSView {
-    private let title: String
-    private weak var target: AnyObject?
-    private let action: Selector
-    private var isHighlighted = false {
-        didSet { needsDisplay = true }
-    }
-
-    init(title: String, target: AnyObject, action: Selector) {
-        self.title = title
-        self.target = target
-        self.action = action
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 38))
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect], owner: self))
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if isHighlighted {
-            NSColor.controlAccentColor.setFill()
-            bounds.insetBy(dx: 6, dy: 2).roundedPath(radius: 8).fill()
-        }
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
-            .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.labelColor
-        ]
-        let attributedTitle = NSAttributedString(string: title, attributes: attributes)
-        let textRect = NSRect(
-            x: 14,
-            y: floor((bounds.height - attributedTitle.size().height) / 2),
-            width: bounds.width - 28,
-            height: attributedTitle.size().height
-        )
-        attributedTitle.draw(in: textRect)
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        isHighlighted = true
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        isHighlighted = false
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard let target else { return }
-        NSApp.sendAction(action, to: target, from: self)
-    }
-}
-
-private final class MenuRowLabel: NSTextField {
-    init(title: String) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 32))
-        stringValue = title
-        isEditable = false
-        isSelectable = false
-        isBordered = false
-        drawsBackground = false
-        alignment = .left
-        font = .systemFont(ofSize: NSFont.systemFontSize)
-        textColor = .disabledControlTextColor
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-}
-
-private extension NSRect {
-    func roundedPath(radius: CGFloat) -> NSBezierPath {
-        NSBezierPath(roundedRect: self, xRadius: radius, yRadius: radius)
     }
 }
