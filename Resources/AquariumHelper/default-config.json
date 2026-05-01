@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "preventLidSleep": true,
+  "appFilterEnabled": false,
+  "allowedApps": [],
+  "allowedCLIProcesses": [],
+  "turnOffBrightnessWhenLidClosed": true,
+  "batteryGateEnabled": false,
+  "minimumBatteryPercent": 20,
+  "autoDisableBatteryEnabled": false,
+  "autoDisableBatteryPercent": 10
+}

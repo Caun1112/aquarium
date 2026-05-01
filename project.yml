@@ -1,0 +1,49 @@
+name: Aquarium
+options:
+  bundleIdPrefix: com.aquarium
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: W9C2P3N7Q2
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Apple Development: zxzimeng@gmail.com (4F7GA4MB42)"
+    SWIFT_VERSION: 6.0
+    MACOSX_DEPLOYMENT_TARGET: 14.0
+targets:
+  Aquarium:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/AquariumApp
+      - path: Sources/AquariumCore
+      - path: Resources/AquariumApp
+      - path: Resources/AquariumHelper
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquarium.app
+        INFOPLIST_FILE: Resources/AquariumApp/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/AquariumApp/Aquarium.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - target: aquarium-helper
+        embed: false
+    postBuildScripts:
+      - name: Bundle privileged helper
+        script: |
+          set -euo pipefail
+          install -m 755 "$BUILT_PRODUCTS_DIR/aquarium-helper" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/com.aquarium.helper"
+    scheme:
+      testTargets: []
+  aquarium-helper:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/AquariumHelper
+      - path: Sources/AquariumCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aquarium.helper
+        CODE_SIGN_ENTITLEMENTS: Resources/AquariumHelper/AquariumHelper.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        OTHER_LDFLAGS: "-F/System/Library/PrivateFrameworks -framework DisplayServices"
