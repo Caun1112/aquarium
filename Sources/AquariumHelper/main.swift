@@ -118,25 +118,27 @@ final class AquariumPolicyDaemon {
         }
 
         let appAllowed = appGateAllows(config)
-        if !config.enabled || !appAllowed {
+        let batteryAllowed = batteryGateAllows(config, batteryPercent: batteryPercent)
+        if !config.enabled || !appAllowed || !batteryAllowed {
             sessionStarted = false
-        } else if !sessionStarted && startBatteryGateAllows(config, batteryPercent: batteryPercent) {
+        } else if !sessionStarted {
             sessionStarted = true
         }
 
         let active = config.enabled && appAllowed && sessionStarted
-        logPolicyIfChanged(config: config, batteryPercent: batteryPercent, appAllowed: appAllowed, active: active)
+        logPolicyIfChanged(config: config, batteryPercent: batteryPercent, appAllowed: appAllowed, batteryAllowed: batteryAllowed, active: active)
         let shouldDisableSystemSleep = active && config.preventLidSleep
         applyClamshellSleepDisabled(shouldDisableSystemSleep)
         applyBrightnessPolicy(active: active, config: config)
     }
 
-    private func logPolicyIfChanged(config: AquariumConfig, batteryPercent: Int?, appAllowed: Bool, active: Bool) {
+    private func logPolicyIfChanged(config: AquariumConfig, batteryPercent: Int?, appAllowed: Bool, batteryAllowed: Bool, active: Bool) {
         let summary = [
             "enabled=\(config.enabled)",
             "preventLidSleep=\(config.preventLidSleep)",
             "appFilterEnabled=\(config.appFilterEnabled)",
             "appAllowed=\(appAllowed)",
+            "batteryAllowed=\(batteryAllowed)",
             "battery=\(batteryPercent.map(String.init) ?? "unknown")",
             "startGate=\(config.batteryGateEnabled ? "\(config.minimumBatteryPercent)%" : "off")",
             "autoDisable=\(config.autoDisableBatteryEnabled ? "\(config.autoDisableBatteryPercent)%" : "off")",
@@ -182,10 +184,10 @@ final class AquariumPolicyDaemon {
 
     private func appGateAllows(_ config: AquariumConfig) -> Bool {
         guard config.appFilterEnabled else { return true }
-        let apps = config.allowedApps
-        let cliProcesses = config.allowedCLIProcesses
+        let apps = config.allowedApps.filter(\.enabled)
+        let cliProcesses = config.allowedCLIProcesses.filter(\.enabled)
         guard !apps.isEmpty || !cliProcesses.isEmpty else {
-            log("filter enabled but no apps or processes are selected")
+            log("filter enabled but no enabled apps or processes are selected")
             return false
         }
 
@@ -201,7 +203,7 @@ final class AquariumPolicyDaemon {
         return appMatches || processMatches
     }
 
-    private func startBatteryGateAllows(_ config: AquariumConfig, batteryPercent: Int?) -> Bool {
+    private func batteryGateAllows(_ config: AquariumConfig, batteryPercent: Int?) -> Bool {
         guard config.batteryGateEnabled else { return true }
         guard let percent = batteryPercent else {
             return true
@@ -412,28 +414,67 @@ private func restoreBrightness() {
 }
 
 private func onlineDisplayIDs() -> [UInt32] {
+    var discovered = [CGDirectDisplayID]()
+    func append(_ display: CGDirectDisplayID) {
+        guard display != 0, !discovered.contains(display) else { return }
+        discovered.append(display)
+    }
+
+    append(CGMainDisplayID())
+
     var count: UInt32 = 0
     var status = CGGetOnlineDisplayList(0, nil, &count)
-    guard status == .success, count > 0 else {
+    if status != .success {
         log("display list count failed -> \(status.rawValue)")
-        return []
-    }
-
-    var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-    status = CGGetOnlineDisplayList(count, &displays, &count)
-    guard status == .success else {
-        log("display list failed -> \(status.rawValue)")
-        return []
-    }
-
-    var onlineDisplays: [UInt32] = []
-    for index in 0..<Int(count) {
-        let display = displays[index]
-        if CGDisplayIsBuiltin(display) != 0 || CGDisplayIsActive(display) != 0 {
-            onlineDisplays.append(UInt32(display))
+    } else if count > 0 {
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        status = CGGetOnlineDisplayList(count, &displays, &count)
+        if status == .success {
+            for index in 0..<Int(count) {
+                append(displays[index])
+            }
+        } else {
+            log("online display list failed -> \(status.rawValue)")
         }
     }
-    return onlineDisplays
+
+    count = 0
+    status = CGGetActiveDisplayList(0, nil, &count)
+    if status != .success {
+        log("active display list count failed -> \(status.rawValue)")
+    } else if count > 0 {
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        status = CGGetActiveDisplayList(count, &displays, &count)
+        if status == .success {
+            for index in 0..<Int(count) {
+                append(displays[index])
+            }
+        } else {
+            log("active display list failed -> \(status.rawValue)")
+        }
+    }
+
+    let dimmableDisplays = discovered.filter { display in
+        CGDisplayIsBuiltin(display) != 0 || CGDisplayIsActive(display) != 0 || display == CGMainDisplayID()
+    }
+    logDisplaySnapshot(dimmableDisplays)
+    return dimmableDisplays.map { UInt32($0) }
+}
+
+private func logDisplaySnapshot(_ displays: [CGDirectDisplayID]) {
+    let summary = displays
+        .map { display in
+            [
+                "id=\(display)",
+                "main=\(display == CGMainDisplayID())",
+                "builtin=\(CGDisplayIsBuiltin(display) != 0)",
+                "active=\(CGDisplayIsActive(display) != 0)",
+                "online=\(CGDisplayIsOnline(display) != 0)",
+                "asleep=\(CGDisplayIsAsleep(display) != 0)"
+            ].joined(separator: ":")
+        }
+        .joined(separator: ",")
+    log("display snapshot [\(summary)]")
 }
 
 private func brightness(for display: UInt32) -> Float? {
