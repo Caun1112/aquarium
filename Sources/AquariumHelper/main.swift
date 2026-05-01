@@ -86,6 +86,7 @@ final class AquariumPolicyDaemon {
     private var appliedDisablesleep: Bool?
     private var lastDisablesleepApply: Date?
     private var lastLidClosed: Bool?
+    private var lastPolicySummary: String?
     private var sessionStarted = false
 
     init(configPath: String) {
@@ -106,7 +107,9 @@ final class AquariumPolicyDaemon {
         var config = (try? AquariumConfigStore.load(path: configPath)) ?? AquariumConfig()
         config.normalizeForSave(previous: nil)
 
-        if shouldAutoDisable(config) {
+        let batteryPercent = batteryPercent()
+
+        if shouldAutoDisable(config, batteryPercent: batteryPercent) {
             config.enabled = false
             try? AquariumConfigStore.save(config, path: configPath)
             sessionStarted = false
@@ -116,14 +119,33 @@ final class AquariumPolicyDaemon {
         let appAllowed = appGateAllows(config)
         if !config.enabled || !appAllowed {
             sessionStarted = false
-        } else if !sessionStarted && startBatteryGateAllows(config) {
+        } else if !sessionStarted && startBatteryGateAllows(config, batteryPercent: batteryPercent) {
             sessionStarted = true
         }
 
         let active = config.enabled && appAllowed && sessionStarted
+        logPolicyIfChanged(config: config, batteryPercent: batteryPercent, appAllowed: appAllowed, active: active)
         let shouldDisableSystemSleep = active && config.preventLidSleep
         applyClamshellSleepDisabled(shouldDisableSystemSleep)
         applyBrightnessPolicy(active: active, config: config)
+    }
+
+    private func logPolicyIfChanged(config: AquariumConfig, batteryPercent: Int?, appAllowed: Bool, active: Bool) {
+        let summary = [
+            "enabled=\(config.enabled)",
+            "preventLidSleep=\(config.preventLidSleep)",
+            "appFilterEnabled=\(config.appFilterEnabled)",
+            "appAllowed=\(appAllowed)",
+            "battery=\(batteryPercent.map(String.init) ?? "unknown")",
+            "startGate=\(config.batteryGateEnabled ? "\(config.minimumBatteryPercent)%" : "off")",
+            "autoDisable=\(config.autoDisableBatteryEnabled ? "\(config.autoDisableBatteryPercent)%" : "off")",
+            "sessionStarted=\(sessionStarted)",
+            "active=\(active)"
+        ].joined(separator: " ")
+
+        guard summary != lastPolicySummary else { return }
+        lastPolicySummary = summary
+        log("policy \(summary)")
     }
 
     private func applyClamshellSleepDisabled(_ disabled: Bool) {
@@ -178,15 +200,21 @@ final class AquariumPolicyDaemon {
         return appMatches || processMatches
     }
 
-    private func startBatteryGateAllows(_ config: AquariumConfig) -> Bool {
+    private func startBatteryGateAllows(_ config: AquariumConfig, batteryPercent: Int?) -> Bool {
         guard config.batteryGateEnabled else { return true }
-        guard let percent = batteryPercent() else { return false }
+        guard let percent = batteryPercent else {
+            log("battery unavailable; allowing start gate")
+            return true
+        }
         return percent >= config.minimumBatteryPercent
     }
 
-    private func shouldAutoDisable(_ config: AquariumConfig) -> Bool {
+    private func shouldAutoDisable(_ config: AquariumConfig, batteryPercent: Int?) -> Bool {
         guard config.enabled, config.autoDisableBatteryEnabled else { return false }
-        guard let percent = batteryPercent() else { return false }
+        guard let percent = batteryPercent else {
+            log("battery unavailable; skipping auto-disable")
+            return false
+        }
         return percent < config.autoDisableBatteryPercent
     }
 }
