@@ -10,6 +10,9 @@ struct SettingsView: View {
                 Image(systemName: controller.config.enabled ? "fish.fill" : "fish")
                 Text("Aquarium")
                     .font(.headline)
+                Text(appVersionText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Toggle("Enabled", isOn: binding(\.enabled))
                     .toggleStyle(.checkbox)
@@ -58,6 +61,12 @@ struct SettingsView: View {
                 }
                 .disabled(controller.helperInstallState == .installed || controller.helperInstallState == .installing)
                 Spacer()
+                Button("GitHub", systemImage: "chevron.left.forwardslash.chevron.right") {
+                    openGitHub()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help("Open GitHub")
             }
             .padding(.top, 2)
         }
@@ -85,6 +94,17 @@ struct SettingsView: View {
                 controller.update { $0[keyPath: keyPath] = Int(value.rounded()) }
             }
         )
+    }
+
+    private var appVersionText: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        return build.map { "v\(version) (\($0))" } ?? "v\(version)"
+    }
+
+    private func openGitHub() {
+        guard let url = URL(string: "https://github.com/ZimengXiong/aquarium") else { return }
+        NSWorkspace.shared.open(url)
     }
 }
 

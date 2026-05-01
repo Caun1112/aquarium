@@ -47,9 +47,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Enable", action: #selector(enable), keyEquivalent: "e"))
         menu.addItem(NSMenuItem(title: "Disable", action: #selector(disable), keyEquivalent: "d"))
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "GitHub", action: #selector(openGitHub), keyEquivalent: "g"))
+        menu.addItem(versionMenuItem())
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Aquarium", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
         return menu
+    }
+
+    private func versionMenuItem() -> NSMenuItem {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        let suffix = build.map { " (\($0))" } ?? ""
+        let item = NSMenuItem(title: "Version \(version)\(suffix)", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
     }
 
     private func configureStatusIcon(for item: NSStatusItem) {
@@ -95,5 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             config.enabled = false
         }
         refreshStatusIcon()
+    }
+
+    @objc private func openGitHub() {
+        guard let url = URL(string: "https://github.com/ZimengXiong/aquarium") else { return }
+        NSWorkspace.shared.open(url)
     }
 }
