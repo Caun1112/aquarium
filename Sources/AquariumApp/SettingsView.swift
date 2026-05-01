@@ -125,15 +125,16 @@ private struct AppSelectionPanel: View {
                         ForEach(controller.config.allowedApps) { app in
                             AppSelectionRow(
                                 app: app,
-                                isSelected: selectedAppID == app.id
+                                isSelected: selectedAppID == app.id,
+                                isEnabled: appEnabledBinding(app)
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedAppID = (selectedAppID == app.id) ? nil : app.id
+                                selectedAppID = app.id
                             }
                             if app.id != controller.config.allowedApps.last?.id {
                                 Divider()
-                                    .padding(.leading, 46)
+                                    .padding(.leading, 56)
                             }
                         }
                     }
@@ -151,35 +152,37 @@ private struct AppSelectionPanel: View {
             Divider()
 
             HStack(spacing: 4) {
-                Button {
+                Button("Add application", systemImage: "plus") {
                     controller.addApps()
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 24, height: 18)
                 }
-                .buttonStyle(.plain)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
                 .controlSize(.small)
+                .help("Add application")
 
                 Divider().frame(height: 14)
 
-                Button {
+                Button("Remove selected application", systemImage: "minus") {
                     if let id = selectedAppID {
                         controller.removeApp(id: id)
                         selectedAppID = nil
                     }
-                } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 24, height: 18)
                 }
-                .buttonStyle(.plain)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
                 .disabled(!hasValidAppSelection)
                 .controlSize(.small)
+                .help("Remove selected application")
 
                 Spacer()
             }
             .padding(.horizontal, 4)
             .frame(height: 24)
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        )
         .onAppear {
             if let selectedAppID, !controller.config.allowedApps.contains(where: { $0.id == selectedAppID }) {
                 self.selectedAppID = nil
@@ -190,9 +193,16 @@ private struct AppSelectionPanel: View {
                 self.selectedAppID = nil
             }
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    }
+
+    private func appEnabledBinding(_ app: AllowedApp) -> Binding<Bool> {
+        Binding(
+            get: {
+                controller.config.allowedApps.first(where: { $0.id == app.id })?.enabled ?? app.enabled
+            },
+            set: { enabled in
+                controller.setAppEnabled(app, enabled: enabled)
+            }
         )
     }
 }
@@ -214,26 +224,28 @@ private struct CLIProcessSelectionPanel: View {
                         ForEach(controller.config.allowedCLIProcesses) { process in
                             CLIProcessRow(
                                 process: process,
-                                isSelected: selectedProcessID == process.id
+                                isSelected: selectedProcessID == process.id,
+                                isEnabled: processEnabledBinding(process)
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                selectedProcessID = (selectedProcessID == process.id) ? nil : process.id
+                                selectedProcessID = process.id
                             }
                             if process.id != controller.config.allowedCLIProcesses.last?.id {
-                                Divider().padding(.leading, 10)
+                                Divider().padding(.leading, 56)
                             }
                         }
 
                         if draftProcessName != nil {
                             if !controller.config.allowedCLIProcesses.isEmpty {
-                                Divider().padding(.leading, 10)
+                                Divider().padding(.leading, 56)
                             }
                             CLIProcessDraftRow(
                                 name: Binding(
                                     get: { draftProcessName ?? "" },
                                     set: { draftProcessName = $0 }
                                 ),
+                                isSelected: true,
                                 isFocused: $draftIsFocused,
                                 onCommit: commitDraft
                             )
@@ -255,18 +267,17 @@ private struct CLIProcessSelectionPanel: View {
             Divider()
 
             HStack(spacing: 4) {
-                Button {
+                Button("Add CLI process", systemImage: "plus") {
                     beginDraft()
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 24, height: 18)
                 }
+                .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .controlSize(.small)
+                .help("Add CLI process")
 
                 Divider().frame(height: 14)
 
-                Button {
+                Button("Remove selected CLI process", systemImage: "minus") {
                     if draftProcessName != nil {
                         draftProcessName = nil
                     } else {
@@ -275,13 +286,12 @@ private struct CLIProcessSelectionPanel: View {
                             selectedProcessID = nil
                         }
                     }
-                } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 24, height: 18)
                 }
+                .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .disabled(draftProcessName != nil ? false : !hasValidProcessSelection)
                 .controlSize(.small)
+                .help("Remove selected CLI process")
 
                 Spacer()
             }
@@ -312,6 +322,7 @@ private struct CLIProcessSelectionPanel: View {
         if draftProcessName == nil {
             draftProcessName = ""
         }
+        selectedProcessID = nil
         DispatchQueue.main.async {
             draftIsFocused = true
         }
@@ -331,14 +342,30 @@ private struct CLIProcessSelectionPanel: View {
             commitDraft()
         }
     }
+
+    private func processEnabledBinding(_ process: AllowedCLIProcess) -> Binding<Bool> {
+        Binding(
+            get: {
+                controller.config.allowedCLIProcesses.first(where: { $0.id == process.id })?.enabled ?? process.enabled
+            },
+            set: { enabled in
+                controller.setCLIProcessEnabled(process, enabled: enabled)
+            }
+        )
+    }
 }
 
 private struct CLIProcessRow: View {
     let process: AllowedCLIProcess
     let isSelected: Bool
+    @Binding var isEnabled: Bool
 
     var body: some View {
         HStack(spacing: 8) {
+            Toggle("Allow \(process.name)", isOn: $isEnabled)
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .frame(width: 18)
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -346,20 +373,25 @@ private struct CLIProcessRow: View {
                 .lineLimit(1)
             Spacer()
         }
-        .padding(6)
+        .padding(.horizontal, 8)
         .frame(height: 30)
         .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
-        .padding(.horizontal, 8)
     }
 }
 
 private struct CLIProcessDraftRow: View {
     @Binding var name: String
+    let isSelected: Bool
     var isFocused: FocusState<Bool>.Binding
     let onCommit: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
+            Toggle("Allow new CLI process", isOn: .constant(true))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .disabled(true)
+                .frame(width: 18)
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -367,19 +399,26 @@ private struct CLIProcessDraftRow: View {
                 .textFieldStyle(.plain)
                 .focused(isFocused)
                 .onSubmit(onCommit)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
         }
         .padding(.horizontal, 8)
         .frame(height: 30)
+        .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
     }
 }
 
 private struct AppSelectionRow: View {
     let app: AllowedApp
     let isSelected: Bool
+    @Binding var isEnabled: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
+            Toggle("Allow \(app.name)", isOn: $isEnabled)
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .frame(width: 18)
             Image(nsImage: NSWorkspace.shared.icon(forFile: app.path))
                 .resizable()
                 .frame(width: 22, height: 22)
