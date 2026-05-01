@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.showsStateColumn = false
         menu.addItem(menuItem("Open Settings", action: #selector(openSettings)))
         menu.addItem(menuItem("Enable", action: #selector(enable)))
         menu.addItem(menuItem("Disable", action: #selector(disable)))
@@ -58,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.keyEquivalentModifierMask = []
         item.target = target ?? self
+        item.image = nil
+        item.onStateImage = nil
+        item.offStateImage = nil
+        item.mixedStateImage = nil
         item.indentationLevel = 0
         return item
     }
@@ -68,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let suffix = build.map { " (\($0))" } ?? ""
         let item = NSMenuItem(title: "Version \(version)\(suffix)", action: nil, keyEquivalent: "")
         item.isEnabled = false
+        item.image = nil
+        item.onStateImage = nil
+        item.offStateImage = nil
+        item.mixedStateImage = nil
         item.indentationLevel = 0
         return item
     }
