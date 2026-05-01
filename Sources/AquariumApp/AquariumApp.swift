@@ -43,16 +43,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Open Settings", action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: "Enable", action: #selector(enable), keyEquivalent: "e"))
-        menu.addItem(NSMenuItem(title: "Disable", action: #selector(disable), keyEquivalent: "d"))
+        menu.addItem(menuItem("Open Settings", action: #selector(openSettings)))
+        menu.addItem(menuItem("Enable", action: #selector(enable)))
+        menu.addItem(menuItem("Disable", action: #selector(disable)))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "GitHub", action: #selector(openGitHub), keyEquivalent: "g"))
+        menu.addItem(menuItem("GitHub", action: #selector(openGitHub)))
         menu.addItem(versionMenuItem())
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Aquarium", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(menuItem("Quit Aquarium", action: #selector(NSApplication.terminate(_:))))
         menu.items.forEach { $0.target = self }
         return menu
+    }
+
+    private func menuItem(_ title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.keyEquivalentModifierMask = []
+        item.indentationLevel = 0
+        return item
     }
 
     private func versionMenuItem() -> NSMenuItem {
@@ -61,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let suffix = build.map { " (\($0))" } ?? ""
         let item = NSMenuItem(title: "Version \(version)\(suffix)", action: nil, keyEquivalent: "")
         item.isEnabled = false
+        item.indentationLevel = 0
         return item
     }
 
