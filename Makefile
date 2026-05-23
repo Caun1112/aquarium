@@ -1,7 +1,7 @@
 PROJECT := Aquarium.xcodeproj
 SCHEME := Aquarium
 CONFIGURATION ?= Debug
-VERSION ?= 0.2.0
+VERSION ?= 0.2.1
 DERIVED_DATA := .build/DerivedData
 ARCHIVE_PATH := .build/Aquarium.xcarchive
 APP_PATH := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/Aquarium.app

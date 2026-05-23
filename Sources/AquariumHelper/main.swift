@@ -95,6 +95,7 @@ final class AquariumPolicyDaemon {
     }
 
     func runForever() -> Never {
+        rotateLogIfNeeded()
         log("aquarium-helper started with config \(configPath)")
         while true {
             autoreleasepool {
@@ -105,7 +106,20 @@ final class AquariumPolicyDaemon {
     }
 
     private func applyOnce() {
-        var config = (try? AquariumConfigStore.load(path: configPath)) ?? AquariumConfig()
+        var config: AquariumConfig
+        do {
+            config = try AquariumConfigStore.load(path: configPath)
+        } catch {
+            log("配置加载失败: \(error.localizedDescription)，使用默认配置")
+            config = AquariumConfig()
+            // 尝试保存默认配置
+            do {
+                try AquariumConfigStore.save(config, path: configPath)
+                log("已恢复默认配置")
+            } catch {
+                log("无法保存默认配置: \(error.localizedDescription)")
+            }
+        }
         config.normalizeForSave(previous: nil)
 
         let batteryPercent = batteryPercent()
@@ -535,6 +549,30 @@ enum AquariumRuntimeState {
 func log(_ message: String) {
     let stamp = ISO8601DateFormatter().string(from: Date())
     FileHandle.standardError.write(Data("[\(stamp)] \(message)\n".utf8))
+}
+
+func rotateLogIfNeeded() {
+    let logPath = "/Library/Logs/AquariumHelper.log"
+    let maxSize: Int64 = 10 * 1024 * 1024 // 10MB
+    let maxBackups = 3
+
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: logPath),
+          let fileSize = attrs[.size] as? Int64,
+          fileSize > maxSize else {
+        return
+    }
+
+    // 轮转旧日志
+    for i in stride(from: maxBackups - 1, through: 1, by: -1) {
+        let oldPath = "\(logPath).\(i)"
+        let newPath = "\(logPath).\(i + 1)"
+        try? FileManager.default.removeItem(atPath: newPath)
+        try? FileManager.default.moveItem(atPath: oldPath, toPath: newPath)
+    }
+
+    // 移动当前日志
+    try? FileManager.default.moveItem(atPath: logPath, toPath: "\(logPath).1")
+    log("日志已轮转（大小: \(fileSize / 1024 / 1024)MB）")
 }
 
 let args = CommandLine.arguments
