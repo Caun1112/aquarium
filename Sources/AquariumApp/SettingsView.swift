@@ -14,25 +14,25 @@ struct SettingsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Toggle("Enabled", isOn: binding(\.enabled))
+                Toggle("启用", isOn: binding(\.enabled))
                     .toggleStyle(.checkbox)
             }
 
             Divider()
 
-            Toggle("Launch at Login", isOn: binding(\.launchAtLogin))
+            Toggle("登录时启动", isOn: binding(\.launchAtLogin))
                 .toggleStyle(.checkbox)
 
             Divider()
 
-            Toggle("Prevent sleep when lid is closed", isOn: binding(\.preventLidSleep))
+            Toggle("合盖时保持唤醒", isOn: binding(\.preventLidSleep))
                 .toggleStyle(.checkbox)
-            Toggle("Turn brightness off when lid is closed", isOn: binding(\.turnOffBrightnessWhenLidClosed))
+            Toggle("合盖时关闭亮度", isOn: binding(\.turnOffBrightnessWhenLidClosed))
                 .toggleStyle(.checkbox)
 
             Divider()
 
-            Toggle("Only while selected apps or processes are running", isOn: binding(\.appFilterEnabled))
+            Toggle("仅在选定的应用或进程运行时", isOn: binding(\.appFilterEnabled))
                 .toggleStyle(.checkbox)
             if controller.config.appFilterEnabled {
                 AppSelectionPanel(controller: controller, selectedFilterItem: $selectedFilterItem)
@@ -44,19 +44,19 @@ struct SettingsView: View {
             }
 
             BatteryRow(
-                title: "Only start above battery level",
+                title: "仅在电池电量高于",
                 isOn: binding(\.batteryGateEnabled),
                 percent: batteryPercentBinding(\.minimumBatteryPercent)
             )
             BatteryRow(
-                title: "Auto-disable when battery drops below",
+                title: "电池电量低于时自动禁用",
                 isOn: binding(\.autoDisableBatteryEnabled),
                 percent: batteryPercentBinding(\.autoDisableBatteryPercent)
             )
 
             HStack(spacing: 12) {
-                Button("Reload") { controller.reload() }
-                Button("Install Helper") {
+                Button("重新加载") { controller.reload() }
+                Button("安装助手") {
                     controller.installHelperIfNeeded()
                 }
                 .disabled(controller.helperInstallState == .installed || controller.helperInstallState == .installing)
@@ -66,7 +66,7 @@ struct SettingsView: View {
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
-                .help("Open GitHub")
+                .help("打开 GitHub")
             }
             .padding(.top, 2)
         }
@@ -168,7 +168,7 @@ private struct AppSelectionPanel: View {
                 }
 
                 if controller.config.allowedApps.isEmpty {
-                    Text("No apps selected")
+                    Text("未选择应用")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -179,17 +179,17 @@ private struct AppSelectionPanel: View {
             Divider()
 
             HStack(spacing: 4) {
-                Button("Add application", systemImage: "plus") {
+                Button("添加应用", systemImage: "plus") {
                     controller.addApps()
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .help("Add application")
+                .help("添加应用")
 
                 Divider().frame(height: 14)
 
-                Button("Remove selected application", systemImage: "minus") {
+                Button("移除选定的应用", systemImage: "minus") {
                     if case .app(let id) = selectedFilterItem {
                         controller.removeApp(id: id)
                         selectedFilterItem = nil
@@ -199,7 +199,7 @@ private struct AppSelectionPanel: View {
                 .buttonStyle(.borderless)
                 .disabled(!hasValidAppSelection)
                 .controlSize(.small)
-                .help("Remove selected application")
+                .help("移除选定的应用")
 
                 Spacer()
             }
@@ -273,7 +273,7 @@ private struct CLIProcessSelectionPanel: View {
                 }
 
                 if controller.config.allowedCLIProcesses.isEmpty && draftProcessName == nil {
-                    Text("No processes selected")
+                    Text("未选择进程")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -286,17 +286,17 @@ private struct CLIProcessSelectionPanel: View {
             Divider()
 
             HStack(spacing: 4) {
-                Button("Add process", systemImage: "plus") {
+                Button("添加进程", systemImage: "plus") {
                     beginDraft()
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .help("Add process")
+                .help("添加进程")
 
                 Divider().frame(height: 14)
 
-                Button("Remove selected process", systemImage: "minus") {
+                Button("移除选定的进程", systemImage: "minus") {
                     if selectedFilterItem == .cliDraft {
                         draftProcessName = nil
                         selectedFilterItem = nil
@@ -309,7 +309,7 @@ private struct CLIProcessSelectionPanel: View {
                 .buttonStyle(.borderless)
                 .disabled(selectedFilterItem == .cliDraft ? false : !hasValidProcessSelection)
                 .controlSize(.small)
-                .help("Remove selected process")
+                .help("移除选定的进程")
 
                 Spacer()
             }
@@ -395,7 +395,7 @@ private struct CLIProcessDraftRow: View {
             Image(systemName: "terminal")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
-            TextField("Process name, e.g. python3", text: $name)
+            TextField("进程名称，例如 python3", text: $name)
                 .textFieldStyle(.plain)
                 .focused(isFocused)
                 .onSubmit(onCommit)

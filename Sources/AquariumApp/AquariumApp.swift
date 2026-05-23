@@ -44,14 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.showsStateColumn = false
-        menu.addItem(menuItem("Open Settings", action: #selector(openSettings)))
-        menu.addItem(menuItem("Enable", action: #selector(enable)))
-        menu.addItem(menuItem("Disable", action: #selector(disable)))
+        menu.addItem(menuItem("打开设置", action: #selector(openSettings)))
+        menu.addItem(menuItem("启用", action: #selector(enable)))
+        menu.addItem(menuItem("禁用", action: #selector(disable)))
         menu.addItem(.separator())
         menu.addItem(menuItem("GitHub", action: #selector(openGitHub)))
         menu.addItem(versionMenuItem())
         menu.addItem(.separator())
-        menu.addItem(menuItem("Quit Aquarium", action: #selector(NSApplication.terminate(_:)), target: NSApp))
+        menu.addItem(menuItem("退出 Aquarium", action: #selector(NSApplication.terminate(_:)), target: NSApp))
         return menu
     }
 
@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
         let suffix = build.map { " (\($0))" } ?? ""
-        let item = NSMenuItem(title: "Version \(version)\(suffix)", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: "版本 \(version)\(suffix)", action: nil, keyEquivalent: "")
         item.isEnabled = false
         item.image = nil
         item.onStateImage = nil
@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         image?.isTemplate = true
         item?.button?.image = image
         item?.button?.imagePosition = .imageOnly
-        item?.button?.toolTip = controller.config.enabled ? "Aquarium is enabled" : "Aquarium is disabled"
+        item?.button?.toolTip = controller.config.enabled ? "Aquarium 已启用" : "Aquarium 已禁用"
         item?.button?.contentTintColor = controller.config.enabled ? .controlAccentColor : .secondaryLabelColor
     }
 

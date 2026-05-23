@@ -5,9 +5,7 @@ options:
     macOS: "14.0"
 settings:
   base:
-    DEVELOPMENT_TEAM: W9C2P3N7Q2
-    CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "Apple Development: zxzimeng@gmail.com (4F7GA4MB42)"
+    CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: 6.0
     MACOSX_DEPLOYMENT_TARGET: 14.0
 targets:

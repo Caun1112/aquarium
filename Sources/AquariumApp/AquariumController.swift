@@ -24,9 +24,9 @@ final class AquariumController {
         do {
             config = try AquariumConfigStore.load(path: path)
             syncLaunchAtLogin()
-            statusMessage = "Loaded helper configuration."
+            statusMessage = "已加载助手配置。"
         } catch {
-            statusMessage = helperInstallState == .installed ? "Waiting for helper configuration." : "Helper is not installed."
+            statusMessage = helperInstallState == .installed ? "等待助手配置。" : "助手未安装。"
         }
     }
 
@@ -37,7 +37,7 @@ final class AquariumController {
 
         installStarted = true
         helperInstallState = .installing
-        statusMessage = "Installing helper..."
+        statusMessage = "正在安装助手..."
 
         Task.detached(priority: .userInitiated) {
             let result: Result<Void, Error>
@@ -54,7 +54,7 @@ final class AquariumController {
                 case .success:
                     self.helperInstallState = .installed
                     self.reload()
-                    self.statusMessage = "Helper installed."
+                    self.statusMessage = "助手已安装。"
                 case .failure(let error):
                     self.helperInstallState = .failed(error.localizedDescription)
                     self.statusMessage = error.localizedDescription
@@ -77,16 +77,16 @@ final class AquariumController {
             try AquariumConfigStore.save(next, path: path)
             config = next
             syncLaunchAtLogin()
-            statusMessage = next.enabled ? "Aquarium mode is active." : "Aquarium mode is off."
+            statusMessage = next.enabled ? "Aquarium 模式已激活。" : "Aquarium 模式已关闭。"
         } catch {
-            statusMessage = "Could not write helper configuration."
+            statusMessage = "无法写入助手配置。"
             installHelperIfNeeded()
         }
     }
 
     func addApps() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Applications"
+        panel.title = "选择应用程序"
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
         panel.allowedContentTypes = [.applicationBundle]
         panel.allowsMultipleSelection = true

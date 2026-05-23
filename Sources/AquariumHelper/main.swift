@@ -168,6 +168,11 @@ final class AquariumPolicyDaemon {
 
     private func applyBrightnessPolicy(active: Bool, config: AquariumConfig) {
         let lidClosed = isLidClosed()
+
+        if lastLidClosed != lidClosed {
+            log("合盖状态变化: \(lidClosed ? "已合盖" : "已打开")")
+        }
+
         defer { lastLidClosed = lidClosed }
 
         guard active, config.turnOffBrightnessWhenLidClosed else {
