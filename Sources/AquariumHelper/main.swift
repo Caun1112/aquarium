@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import CoreGraphics
+import IOKit.ps
 
 @_silgen_name("proc_listpids")
 func procListPIDs(_ type: UInt32, _ typeinfo: UInt32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
@@ -377,12 +378,22 @@ private func commandContainsAppPath(_ command: String, appPath: String) -> Bool 
 }
 
 private func batteryPercent() -> Int? {
-    let output = run("/usr/bin/pmset", ["-g", "batt"]).output
-    guard let percentRange = output.range(of: #"(\d+)%"#, options: .regularExpression) else {
-        log("battery parse failed from pmset output: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
-        return nil
+    let info = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+    let sources = IOPSCopyPowerSourcesList(info).takeRetainedValue() as Array
+
+    for source in sources {
+        guard let description = IOPSGetPowerSourceDescription(info, source).takeUnretainedValue() as? [String: Any],
+              description[kIOPSTypeKey as String] as? String == kIOPSInternalBatteryType,
+              let current = description[kIOPSCurrentCapacityKey as String] as? Int,
+              let maximum = description[kIOPSMaxCapacityKey as String] as? Int,
+              maximum > 0 else {
+            continue
+        }
+        return Int((Double(current) / Double(maximum) * 100).rounded())
     }
-    return Int(output[percentRange].dropLast())
+
+    log("battery read failed from IOKit power sources")
+    return nil
 }
 
 private func dimBrightnessToBlack() {

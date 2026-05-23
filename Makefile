@@ -1,7 +1,7 @@
 PROJECT := Aquarium.xcodeproj
 SCHEME := Aquarium
 CONFIGURATION ?= Debug
-VERSION ?= 0.2.1
+VERSION ?= $(shell /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/AquariumApp/Info.plist)
 DERIVED_DATA := .build/DerivedData
 ARCHIVE_PATH := .build/Aquarium.xcarchive
 APP_PATH := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/Aquarium.app

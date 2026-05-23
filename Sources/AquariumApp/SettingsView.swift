@@ -7,7 +7,11 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: controller.config.enabled ? "fish.fill" : "fish")
+                Image(nsImage: CoffeeCupIcon.settingsImage(isFull: controller.config.enabled))
+                    .resizable()
+                    .frame(width: 18, height: 18)
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel(controller.config.enabled ? "满杯咖啡" : "空杯咖啡")
                 Text("Aquarium")
                     .font(.headline)
                 Text(appVersionText)

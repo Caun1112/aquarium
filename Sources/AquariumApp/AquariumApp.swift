@@ -19,7 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         configureStatusIcon(for: item)
-        item.menu = makeMenu()
         statusItem = item
         configPollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -83,19 +82,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusIcon(for item: NSStatusItem) {
         item.button?.title = ""
+        item.button?.target = self
+        item.button?.action = #selector(statusItemClicked(_:))
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         refreshStatusIcon(item: item)
     }
 
     private func refreshStatusIcon(item: NSStatusItem? = nil) {
         let item = item ?? statusItem
-        let imageName = controller.config.enabled ? "fish.fill" : "fish"
-        let image = NSImage(systemSymbolName: imageName, accessibilityDescription: "Aquarium")
-            ?? NSImage(systemSymbolName: "drop.fill", accessibilityDescription: "Aquarium")
-        image?.isTemplate = true
+        let image = CoffeeCupIcon.statusImage(isFull: controller.config.enabled)
         item?.button?.image = image
         item?.button?.imagePosition = .imageOnly
         item?.button?.toolTip = controller.config.enabled ? "Aquarium 已启用" : "Aquarium 已禁用"
-        item?.button?.contentTintColor = controller.config.enabled ? .controlAccentColor : .secondaryLabelColor
+        item?.button?.contentTintColor = nil
     }
 
     @objc private func openSettings() {
@@ -124,6 +123,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             config.enabled = false
         }
         refreshStatusIcon()
+    }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { return }
+        switch event.type {
+        case .rightMouseUp:
+            showStatusMenu(from: sender)
+        case .leftMouseUp where event.modifierFlags.contains(.control):
+            showStatusMenu(from: sender)
+        case .leftMouseUp:
+            toggleEnabled()
+        default:
+            break
+        }
+    }
+
+    private func toggleEnabled() {
+        controller.update { config in
+            config.enabled.toggle()
+        }
+        refreshStatusIcon()
+    }
+
+    private func showStatusMenu(from button: NSStatusBarButton) {
+        let menu = makeMenu()
+        statusItem?.menu = menu
+        button.performClick(nil)
+        statusItem?.menu = nil
     }
 
     @objc private func openGitHub() {
