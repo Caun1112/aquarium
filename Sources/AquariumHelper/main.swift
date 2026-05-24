@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import CoreGraphics
 import IOKit.ps
+import IOKit.pwr_mgt
 
 @_silgen_name("proc_listpids")
 func procListPIDs(_ type: UInt32, _ typeinfo: UInt32, _ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
@@ -89,6 +90,8 @@ final class AquariumPolicyDaemon {
     private var lastDisablesleepApply: Date?
     private var lastLidClosed: Bool?
     private var lastPolicySummary: String?
+    private var noDisplaySleepAssertionID: IOPMAssertionID = 0
+    private var preventUserIdleSystemSleepAssertionID: IOPMAssertionID = 0
     private var sessionStarted = false
 
     init(configPath: String) {
@@ -96,7 +99,6 @@ final class AquariumPolicyDaemon {
     }
 
     func runForever() -> Never {
-        rotateLogIfNeeded()
         log("aquarium-helper started with config \(configPath)")
         while true {
             autoreleasepool {
@@ -142,15 +144,18 @@ final class AquariumPolicyDaemon {
 
         let active = config.enabled && appAllowed && sessionStarted
         logPolicyIfChanged(config: config, batteryPercent: batteryPercent, appAllowed: appAllowed, batteryAllowed: batteryAllowed, active: active)
+        let lidClosed = isLidClosed()
         let shouldDisableSystemSleep = active && config.preventLidSleep
         applyClamshellSleepDisabled(shouldDisableSystemSleep)
-        applyBrightnessPolicy(active: active, config: config)
+        applyScreenLockPolicy(active: active, config: config)
+        applyBrightnessPolicy(active: active, config: config, lidClosed: lidClosed)
     }
 
     private func logPolicyIfChanged(config: AquariumConfig, batteryPercent: Int?, appAllowed: Bool, batteryAllowed: Bool, active: Bool) {
         let summary = [
             "enabled=\(config.enabled)",
             "preventLidSleep=\(config.preventLidSleep)",
+            "preventScreenLockWhenLidClosed=\(config.preventScreenLockWhenLidClosed)",
             "appFilterEnabled=\(config.appFilterEnabled)",
             "appAllowed=\(appAllowed)",
             "batteryAllowed=\(batteryAllowed)",
@@ -177,12 +182,52 @@ final class AquariumPolicyDaemon {
         if result.status == 0 {
             appliedDisablesleep = disabled
             lastDisablesleepApply = Date()
+            log("pmset disablesleep \(disabled ? "1" : "0") -> \(result.status)")
+        } else {
+            let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffix = detail.isEmpty ? "" : " output=\(detail)"
+            log("pmset disablesleep \(disabled ? "1" : "0") -> \(result.status)\(suffix)")
         }
-        log("pmset disablesleep \(disabled ? "1" : "0") -> \(result.status)")
     }
 
-    private func applyBrightnessPolicy(active: Bool, config: AquariumConfig) {
-        let lidClosed = isLidClosed()
+    private func applyScreenLockPolicy(active: Bool, config: AquariumConfig) {
+        let shouldPreventLock = active && config.preventScreenLockWhenLidClosed
+        setPowerAssertion(
+            held: shouldPreventLock,
+            type: kIOPMAssertionTypeNoDisplaySleep,
+            name: "Aquarium 防止合盖锁屏",
+            id: &noDisplaySleepAssertionID
+        )
+        setPowerAssertion(
+            held: shouldPreventLock,
+            type: kIOPMAssertionTypePreventUserIdleSystemSleep,
+            name: "Aquarium 防止合盖空闲睡眠",
+            id: &preventUserIdleSystemSleepAssertionID
+        )
+    }
+
+    private func setPowerAssertion(held: Bool, type: String, name: String, id: inout IOPMAssertionID) {
+        if held, id == 0 {
+            let status = IOPMAssertionCreateWithName(type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), name as CFString, &id)
+            if status == kIOReturnSuccess {
+                log("power assertion created type=\(type) id=\(id)")
+            } else {
+                id = 0
+                log("power assertion create failed type=\(type) status=\(status)")
+            }
+        } else if !held, id != 0 {
+            let oldID = id
+            let status = IOPMAssertionRelease(id)
+            id = 0
+            if status == kIOReturnSuccess {
+                log("power assertion released type=\(type) id=\(oldID)")
+            } else {
+                log("power assertion release failed type=\(type) id=\(oldID) status=\(status)")
+            }
+        }
+    }
+
+    private func applyBrightnessPolicy(active: Bool, config: AquariumConfig, lidClosed: Bool) {
 
         if lastLidClosed != lidClosed {
             log("合盖状态变化: \(lidClosed ? "已合盖" : "已打开")")
@@ -559,21 +604,41 @@ enum AquariumRuntimeState {
 
 func log(_ message: String) {
     let stamp = ISO8601DateFormatter().string(from: Date())
-    FileHandle.standardError.write(Data("[\(stamp)] \(message)\n".utf8))
+    let line = "[\(stamp)] \(message)\n"
+    let logPath = "/Library/Logs/AquariumHelper.log"
+    let rotationMessage = rotateLogIfNeeded(logPath: logPath)
+
+    do {
+        let directory = (logPath as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: logPath) {
+            FileManager.default.createFile(atPath: logPath, contents: nil)
+        }
+        guard let handle = FileHandle(forWritingAtPath: logPath) else {
+            FileHandle.standardError.write(Data(line.utf8))
+            return
+        }
+        handle.seekToEndOfFile()
+        if let rotationMessage {
+            handle.write(Data("[\(stamp)] \(rotationMessage)\n".utf8))
+        }
+        handle.write(Data(line.utf8))
+        handle.closeFile()
+    } catch {
+        FileHandle.standardError.write(Data(line.utf8))
+    }
 }
 
-func rotateLogIfNeeded() {
-    let logPath = "/Library/Logs/AquariumHelper.log"
+func rotateLogIfNeeded(logPath: String) -> String? {
     let maxSize: Int64 = 10 * 1024 * 1024 // 10MB
     let maxBackups = 3
 
     guard let attrs = try? FileManager.default.attributesOfItem(atPath: logPath),
           let fileSize = attrs[.size] as? Int64,
           fileSize > maxSize else {
-        return
+        return nil
     }
 
-    // 轮转旧日志
     for i in stride(from: maxBackups - 1, through: 1, by: -1) {
         let oldPath = "\(logPath).\(i)"
         let newPath = "\(logPath).\(i + 1)"
@@ -581,9 +646,8 @@ func rotateLogIfNeeded() {
         try? FileManager.default.moveItem(atPath: oldPath, toPath: newPath)
     }
 
-    // 移动当前日志
     try? FileManager.default.moveItem(atPath: logPath, toPath: "\(logPath).1")
-    log("日志已轮转（大小: \(fileSize / 1024 / 1024)MB）")
+    return "日志已轮转（大小: \(fileSize / 1024 / 1024)MB）"
 }
 
 let args = CommandLine.arguments

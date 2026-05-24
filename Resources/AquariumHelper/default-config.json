@@ -5,6 +5,7 @@
   "allowedApps": [],
   "allowedCLIProcesses": [],
   "turnOffBrightnessWhenLidClosed": true,
+  "preventScreenLockWhenLidClosed": true,
   "batteryGateEnabled": true,
   "minimumBatteryPercent": 20,
   "autoDisableBatteryEnabled": true,

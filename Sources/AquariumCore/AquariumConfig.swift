@@ -7,6 +7,7 @@ public struct AquariumConfig: Codable, Equatable {
     public var allowedApps: [AllowedApp]
     public var allowedCLIProcesses: [AllowedCLIProcess]
     public var turnOffBrightnessWhenLidClosed: Bool
+    public var preventScreenLockWhenLidClosed: Bool
     public var batteryGateEnabled: Bool
     public var minimumBatteryPercent: Int
     public var autoDisableBatteryEnabled: Bool
@@ -20,6 +21,7 @@ public struct AquariumConfig: Codable, Equatable {
         allowedApps: [AllowedApp] = [],
         allowedCLIProcesses: [AllowedCLIProcess] = [],
         turnOffBrightnessWhenLidClosed: Bool = true,
+        preventScreenLockWhenLidClosed: Bool = true,
         batteryGateEnabled: Bool = true,
         minimumBatteryPercent: Int = 20,
         autoDisableBatteryEnabled: Bool = true,
@@ -32,6 +34,7 @@ public struct AquariumConfig: Codable, Equatable {
         self.allowedApps = allowedApps
         self.allowedCLIProcesses = allowedCLIProcesses
         self.turnOffBrightnessWhenLidClosed = turnOffBrightnessWhenLidClosed
+        self.preventScreenLockWhenLidClosed = preventScreenLockWhenLidClosed
         self.batteryGateEnabled = batteryGateEnabled
         self.minimumBatteryPercent = minimumBatteryPercent
         self.autoDisableBatteryEnabled = autoDisableBatteryEnabled
@@ -57,6 +60,7 @@ public struct AquariumConfig: Codable, Equatable {
         case allowedApps
         case allowedCLIProcesses
         case turnOffBrightnessWhenLidClosed
+        case preventScreenLockWhenLidClosed
         case batteryGateEnabled
         case minimumBatteryPercent
         case autoDisableBatteryEnabled
@@ -72,6 +76,7 @@ public struct AquariumConfig: Codable, Equatable {
         allowedApps = try container.decodeIfPresent([AllowedApp].self, forKey: .allowedApps) ?? []
         allowedCLIProcesses = try container.decodeIfPresent([AllowedCLIProcess].self, forKey: .allowedCLIProcesses) ?? []
         turnOffBrightnessWhenLidClosed = try container.decodeIfPresent(Bool.self, forKey: .turnOffBrightnessWhenLidClosed) ?? true
+        preventScreenLockWhenLidClosed = try container.decodeIfPresent(Bool.self, forKey: .preventScreenLockWhenLidClosed) ?? true
         batteryGateEnabled = try container.decodeIfPresent(Bool.self, forKey: .batteryGateEnabled) ?? true
         minimumBatteryPercent = try container.decodeIfPresent(Int.self, forKey: .minimumBatteryPercent) ?? 20
         autoDisableBatteryEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoDisableBatteryEnabled) ?? true

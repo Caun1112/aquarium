@@ -28,8 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            self.openSettings()
-            self.controller.installHelperIfNeeded()
             if #available(macOS 13.0, *) {
                 LaunchAtLoginManager.sync(with: self.controller.config.launchAtLogin)
             }

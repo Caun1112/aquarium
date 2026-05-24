@@ -33,6 +33,8 @@ struct SettingsView: View {
                 .toggleStyle(.checkbox)
             Toggle("合盖时关闭亮度", isOn: binding(\.turnOffBrightnessWhenLidClosed))
                 .toggleStyle(.checkbox)
+            Toggle("启用时防止空闲锁屏", isOn: binding(\.preventScreenLockWhenLidClosed))
+                .toggleStyle(.checkbox)
 
             Divider()
 
@@ -78,7 +80,6 @@ struct SettingsView: View {
         .frame(width: 420)
         .onAppear {
             controller.reload()
-            controller.installHelperIfNeeded()
         }
     }
 
