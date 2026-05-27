@@ -78,6 +78,9 @@ final class AquariumController {
             config = next
             syncLaunchAtLogin()
             statusMessage = next.enabled ? "Aquarium 模式已激活。" : "Aquarium 模式已关闭。"
+            if helperInstallState != .installed {
+                installHelperIfNeeded()
+            }
         } catch {
             statusMessage = "无法写入助手配置。"
             installHelperIfNeeded()

@@ -26,13 +26,16 @@ enum PrivilegedHelperInstaller {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = ["print", "system/\(label)"]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
 
         do {
             try process.run()
             process.waitUntilExit()
-            return process.terminationStatus == 0
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(decoding: data, as: UTF8.self)
+            return process.terminationStatus == 0 && output.contains("state = running")
         } catch {
             return false
         }
@@ -82,7 +85,8 @@ enum PrivilegedHelperInstaller {
             "install -m 644 \(shellQuote(plist.path)) \(shellQuote(daemonPlistDestination))",
             "launchctl bootout system \(shellQuote(daemonPlistDestination)) 2>/dev/null || true",
             "launchctl bootstrap system \(shellQuote(daemonPlistDestination))",
-            "launchctl enable system/\(label)"
+            "launchctl enable system/\(label)",
+            "launchctl kickstart -k system/\(label)"
         ].joined(separator: "; ")
 
         let process = Process()

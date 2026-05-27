@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if #available(macOS 13.0, *) {
                 LaunchAtLoginManager.sync(with: self.controller.config.launchAtLogin)
             }
+            self.controller.installHelperIfNeeded()
         }
     }
 

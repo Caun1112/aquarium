@@ -90,8 +90,10 @@ final class AquariumPolicyDaemon {
     private var lastDisablesleepApply: Date?
     private var lastLidClosed: Bool?
     private var lastPolicySummary: String?
-    private var noDisplaySleepAssertionID: IOPMAssertionID = 0
+    private var preventUserIdleDisplaySleepAssertionID: IOPMAssertionID = 0
     private var preventUserIdleSystemSleepAssertionID: IOPMAssertionID = 0
+    private var userActivityAssertionID: IOPMAssertionID = 0
+    private var lastUserActivityDeclaration: Date?
     private var sessionStarted = false
 
     init(configPath: String) {
@@ -194,16 +196,21 @@ final class AquariumPolicyDaemon {
         let shouldPreventLock = active && config.preventScreenLockWhenLidClosed
         setPowerAssertion(
             held: shouldPreventLock,
-            type: kIOPMAssertionTypeNoDisplaySleep,
-            name: "Aquarium 防止合盖锁屏",
-            id: &noDisplaySleepAssertionID
+            type: kIOPMAssertionTypePreventUserIdleDisplaySleep,
+            name: "Aquarium 防止空闲锁屏",
+            id: &preventUserIdleDisplaySleepAssertionID
         )
         setPowerAssertion(
             held: shouldPreventLock,
             type: kIOPMAssertionTypePreventUserIdleSystemSleep,
-            name: "Aquarium 防止合盖空闲睡眠",
+            name: "Aquarium 防止空闲睡眠",
             id: &preventUserIdleSystemSleepAssertionID
         )
+        if shouldPreventLock {
+            declareUserActivityIfNeeded()
+        } else {
+            releaseUserActivityAssertionIfNeeded()
+        }
     }
 
     private func setPowerAssertion(held: Bool, type: String, name: String, id: inout IOPMAssertionID) {
@@ -224,6 +231,44 @@ final class AquariumPolicyDaemon {
             } else {
                 log("power assertion release failed type=\(type) id=\(oldID) status=\(status)")
             }
+        }
+    }
+
+    private func declareUserActivityIfNeeded() {
+        if let lastUserActivityDeclaration,
+           Date().timeIntervalSince(lastUserActivityDeclaration) < 30 {
+            return
+        }
+
+        let wasInactive = userActivityAssertionID == 0
+        let status = IOPMAssertionDeclareUserActivity(
+            "Aquarium 防止空闲锁屏" as CFString,
+            kIOPMUserActiveLocal,
+            &userActivityAssertionID
+        )
+        if status == kIOReturnSuccess {
+            lastUserActivityDeclaration = Date()
+            if wasInactive {
+                log("user activity assertion declared id=\(userActivityAssertionID)")
+            }
+        } else {
+            userActivityAssertionID = 0
+            lastUserActivityDeclaration = nil
+            log("user activity assertion failed status=\(status)")
+        }
+    }
+
+    private func releaseUserActivityAssertionIfNeeded() {
+        lastUserActivityDeclaration = nil
+        guard userActivityAssertionID != 0 else { return }
+
+        let oldID = userActivityAssertionID
+        let status = IOPMAssertionRelease(userActivityAssertionID)
+        userActivityAssertionID = 0
+        if status == kIOReturnSuccess {
+            log("user activity assertion released id=\(oldID)")
+        } else {
+            log("user activity assertion release failed id=\(oldID) status=\(status)")
         }
     }
 
