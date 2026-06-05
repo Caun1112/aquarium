@@ -11,16 +11,20 @@ final class AquariumController {
     var config: AquariumConfig
     var statusMessage: String = ""
     var helperInstallState: HelperInstallState = .unknown
+    var helperDiagnostics = HelperDiagnostics()
 
     private let path = AquariumConfig.defaultPath
     private var installStarted = false
+    private var lastDiagnosticsRefresh: Date?
+    private var lastRepairAttempt: Date?
 
     private init() {
         config = (try? AquariumConfigStore.load()) ?? AquariumConfig()
     }
 
     func reload() {
-        helperInstallState = PrivilegedHelperInstaller.isInstalled() ? .installed : .missing
+        refreshDiagnosticsIfNeeded()
+        helperInstallState = helperDiagnostics.installedAndRunning ? .installed : .missing
         do {
             config = try AquariumConfigStore.load(path: path)
             syncLaunchAtLogin()
@@ -28,11 +32,13 @@ final class AquariumController {
         } catch {
             statusMessage = helperInstallState == .installed ? "等待助手配置。" : "助手未安装。"
         }
+        repairHelperIfNeeded()
     }
 
     func installHelperIfNeeded() {
         guard !installStarted else { return }
-        reload()
+        refreshDiagnosticsIfNeeded(force: true)
+        helperInstallState = helperDiagnostics.installedAndRunning ? .installed : .missing
         guard helperInstallState != .installed else { return }
 
         installStarted = true
@@ -53,6 +59,7 @@ final class AquariumController {
                 switch result {
                 case .success:
                     self.helperInstallState = .installed
+                    self.refreshDiagnosticsIfNeeded(force: true)
                     self.reload()
                     self.statusMessage = "助手已安装。"
                 case .failure(let error):
@@ -85,6 +92,11 @@ final class AquariumController {
             statusMessage = "无法写入助手配置。"
             installHelperIfNeeded()
         }
+    }
+
+    func refreshDiagnostics() {
+        refreshDiagnosticsIfNeeded(force: true)
+        helperInstallState = helperDiagnostics.installedAndRunning ? .installed : .missing
     }
 
     func addApps() {
@@ -168,6 +180,33 @@ final class AquariumController {
         if #available(macOS 13.0, *) {
             LaunchAtLoginManager.sync(with: config.launchAtLogin)
         }
+    }
+
+    private func refreshDiagnosticsIfNeeded(force: Bool = false) {
+        if !force,
+           let lastDiagnosticsRefresh,
+           Date().timeIntervalSince(lastDiagnosticsRefresh) < 5 {
+            return
+        }
+
+        helperDiagnostics = PrivilegedHelperInstaller.diagnostics()
+        lastDiagnosticsRefresh = Date()
+    }
+
+    private func repairHelperIfNeeded() {
+        guard config.enabled,
+              !installStarted,
+              !helperDiagnostics.installedAndRunning else {
+            return
+        }
+
+        if let lastRepairAttempt,
+           Date().timeIntervalSince(lastRepairAttempt) < 300 {
+            return
+        }
+
+        lastRepairAttempt = Date()
+        installHelperIfNeeded()
     }
 }
 

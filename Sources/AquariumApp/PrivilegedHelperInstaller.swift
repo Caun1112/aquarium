@@ -8,37 +8,74 @@ enum HelperInstallState: Equatable {
     case failed(String)
 }
 
+struct HelperDiagnostics: Equatable {
+    var bundledFilesExist: Bool = false
+    var helperExists: Bool = false
+    var daemonPlistExists: Bool = false
+    var helperMatchesBundle: Bool = false
+    var daemonPlistMatchesBundle: Bool = false
+    var launchdState: String = "未知"
+    var launchdOutput: String = ""
+    var preventsDisplaySleep: Bool = false
+    var preventsSystemSleep: Bool = false
+    var declaresUserActive: Bool = false
+    var latestLogLine: String?
+
+    var helperRunning: Bool {
+        launchdState == "running"
+    }
+
+    var installedAndRunning: Bool {
+        bundledFilesExist
+            && helperExists
+            && daemonPlistExists
+            && helperMatchesBundle
+            && daemonPlistMatchesBundle
+            && helperRunning
+    }
+
+    var lockProtectionActive: Bool {
+        preventsDisplaySleep && preventsSystemSleep && declaresUserActive
+    }
+}
+
 enum PrivilegedHelperInstaller {
     static let label = "com.aquarium.helper"
     static let helperDestination = "/Library/PrivilegedHelperTools/com.aquarium.helper"
     static let daemonPlistDestination = "/Library/LaunchDaemons/com.aquarium.helper.plist"
     static let configDestination = AquariumConfig.defaultPath
+    static let logPath = "/Library/Logs/AquariumHelper.log"
 
     static func isInstalled() -> Bool {
-        guard bundledFilesExist(),
-              FileManager.default.fileExists(atPath: helperDestination),
-              FileManager.default.fileExists(atPath: daemonPlistDestination),
-              bundledHelperMatchesInstalled(),
-              bundledPlistMatchesInstalled() else {
-            return false
-        }
+        diagnostics().installedAndRunning
+    }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["print", "system/\(label)"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+    static func diagnostics() -> HelperDiagnostics {
+        let bundledFilesExist = bundledFilesExist()
+        let helperExists = FileManager.default.fileExists(atPath: helperDestination)
+        let daemonPlistExists = FileManager.default.fileExists(atPath: daemonPlistDestination)
+        let helperMatchesBundle = bundledHelperMatchesInstalled()
+        let daemonPlistMatchesBundle = bundledPlistMatchesInstalled()
+        let launchdOutput = run("/bin/launchctl", ["print", "system/\(label)"])
+        let assertionsOutput = run("/usr/bin/pmset", ["-g", "assertions"])
+        let aquariumAssertionLines = assertionsOutput
+            .split(separator: "\n")
+            .map(String.init)
+            .filter { $0.contains("com.aquarium.helper") || $0.contains("Aquarium") }
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(decoding: data, as: UTF8.self)
-            return process.terminationStatus == 0 && output.contains("state = running")
-        } catch {
-            return false
-        }
+        return HelperDiagnostics(
+            bundledFilesExist: bundledFilesExist,
+            helperExists: helperExists,
+            daemonPlistExists: daemonPlistExists,
+            helperMatchesBundle: helperMatchesBundle,
+            daemonPlistMatchesBundle: daemonPlistMatchesBundle,
+            launchdState: launchdState(from: launchdOutput),
+            launchdOutput: launchdOutput,
+            preventsDisplaySleep: aquariumAssertionLines.contains { $0.contains("PreventUserIdleDisplaySleep") },
+            preventsSystemSleep: aquariumAssertionLines.contains { $0.contains("PreventUserIdleSystemSleep") },
+            declaresUserActive: aquariumAssertionLines.contains { $0.contains("UserIsActive") },
+            latestLogLine: latestLogLine()
+        )
     }
 
     private static func bundledFilesExist() -> Bool {
@@ -67,6 +104,43 @@ enum PrivilegedHelperInstaller {
             return false
         }
         return left == right
+    }
+
+    private static func run(_ executable: String, _ arguments: [String]) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            return String(describing: error)
+        }
+    }
+
+    private static func launchdState(from output: String) -> String {
+        output
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { $0.hasPrefix("state = ") }?
+            .replacingOccurrences(of: "state = ", with: "") ?? "未加载"
+    }
+
+    private static func latestLogLine() -> String? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: logPath)),
+              let raw = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return raw
+            .split(separator: "\n")
+            .last
+            .map(String.init)
     }
 
     static func installFromBundle() throws {

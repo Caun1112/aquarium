@@ -60,8 +60,15 @@ struct SettingsView: View {
                 percent: batteryPercentBinding(\.autoDisableBatteryPercent)
             )
 
+            Divider()
+
+            DiagnosticsPanel(controller: controller)
+
             HStack(spacing: 12) {
-                Button("重新加载") { controller.reload() }
+                Button("重新加载") {
+                    controller.reload()
+                    controller.refreshDiagnostics()
+                }
                 Button("安装助手") {
                     controller.installHelperIfNeeded()
                 }
@@ -77,9 +84,10 @@ struct SettingsView: View {
             .padding(.top, 2)
         }
         .padding(12)
-        .frame(width: 420)
+        .frame(width: 460)
         .onAppear {
             controller.reload()
+            controller.refreshDiagnostics()
         }
     }
 
@@ -117,6 +125,85 @@ private enum FilterSelection: Equatable {
     case app(String)
     case cliProcess(String)
     case cliDraft
+}
+
+private struct DiagnosticsPanel: View {
+    let controller: AquariumController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("状态诊断")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                DiagnosticRow(title: "助手", value: helperStatusText)
+                DiagnosticRow(title: "启动服务", value: controller.helperDiagnostics.launchdState)
+                DiagnosticRow(title: "助手文件", value: controller.helperDiagnostics.helperMatchesBundle ? "已安装且匹配" : "缺失或版本不匹配")
+                DiagnosticRow(title: "防止显示器休眠", value: enabledText(controller.helperDiagnostics.preventsDisplaySleep))
+                DiagnosticRow(title: "防止系统空闲睡眠", value: enabledText(controller.helperDiagnostics.preventsSystemSleep))
+                DiagnosticRow(title: "用户活跃声明", value: enabledText(controller.helperDiagnostics.declaresUserActive))
+                if let latestLogLine = controller.helperDiagnostics.latestLogLine {
+                    DiagnosticRow(title: "最近日志", value: latestLogLine)
+                }
+            }
+
+            if shouldShowWarning {
+                Text(warningText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var helperStatusText: String {
+        switch controller.helperInstallState {
+        case .unknown:
+            return "检查中"
+        case .installed:
+            return "运行中"
+        case .missing:
+            return "需要修复"
+        case .installing:
+            return "正在安装"
+        case .failed(let message):
+            return "安装失败：\(message)"
+        }
+    }
+
+    private var shouldShowWarning: Bool {
+        controller.config.enabled && !controller.helperDiagnostics.lockProtectionActive
+    }
+
+    private var warningText: String {
+        controller.helperDiagnostics.installedAndRunning
+            ? "Aquarium 已启用，但空闲锁屏防护尚未全部生效。"
+            : "Aquarium 已启用，但助手未正常运行；应用会尝试自动修复。"
+    }
+
+    private func enabledText(_ enabled: Bool) -> String {
+        enabled ? "生效" : "未生效"
+    }
+}
+
+private struct DiagnosticRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: 112, alignment: .leading)
+            Text(value)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
+    }
 }
 
 private struct BatteryRow: View {
