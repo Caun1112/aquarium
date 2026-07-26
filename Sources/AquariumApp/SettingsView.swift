@@ -116,7 +116,7 @@ struct SettingsView: View {
     }
 
     private func openGitHub() {
-        guard let url = URL(string: "https://github.com/ZimengXiong/aquarium") else { return }
+        guard let url = URL(string: "https://github.com/Caun1112/aquarium") else { return }
         NSWorkspace.shared.open(url)
     }
 }
@@ -140,6 +140,7 @@ private struct DiagnosticsPanel: View {
                 DiagnosticRow(title: "助手", value: helperStatusText)
                 DiagnosticRow(title: "启动服务", value: controller.helperDiagnostics.launchdState)
                 DiagnosticRow(title: "助手文件", value: controller.helperDiagnostics.helperMatchesBundle ? "已安装且匹配" : "缺失或版本不匹配")
+                DiagnosticRow(title: "禁用合盖睡眠", value: enabledText(controller.helperDiagnostics.clamshellSleepDisabled))
                 DiagnosticRow(title: "防止显示器休眠", value: enabledText(controller.helperDiagnostics.preventsDisplaySleep))
                 DiagnosticRow(title: "防止系统空闲睡眠", value: enabledText(controller.helperDiagnostics.preventsSystemSleep))
                 DiagnosticRow(title: "用户活跃声明", value: enabledText(controller.helperDiagnostics.declaresUserActive))

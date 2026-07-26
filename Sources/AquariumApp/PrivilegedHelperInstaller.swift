@@ -16,6 +16,7 @@ struct HelperDiagnostics: Equatable {
     var daemonPlistMatchesBundle: Bool = false
     var launchdState: String = "未知"
     var launchdOutput: String = ""
+    var clamshellSleepDisabled: Bool = false
     var preventsDisplaySleep: Bool = false
     var preventsSystemSleep: Bool = false
     var declaresUserActive: Bool = false
@@ -35,7 +36,7 @@ struct HelperDiagnostics: Equatable {
     }
 
     var lockProtectionActive: Bool {
-        preventsDisplaySleep && preventsSystemSleep && declaresUserActive
+        clamshellSleepDisabled && preventsDisplaySleep && preventsSystemSleep && declaresUserActive
     }
 }
 
@@ -57,6 +58,7 @@ enum PrivilegedHelperInstaller {
         let helperMatchesBundle = bundledHelperMatchesInstalled()
         let daemonPlistMatchesBundle = bundledPlistMatchesInstalled()
         let launchdOutput = run("/bin/launchctl", ["print", "system/\(label)"])
+        let powerSettingsOutput = run("/usr/bin/pmset", ["-g"])
         let assertionsOutput = run("/usr/bin/pmset", ["-g", "assertions"])
         let aquariumAssertionLines = assertionsOutput
             .split(separator: "\n")
@@ -71,6 +73,7 @@ enum PrivilegedHelperInstaller {
             daemonPlistMatchesBundle: daemonPlistMatchesBundle,
             launchdState: launchdState(from: launchdOutput),
             launchdOutput: launchdOutput,
+            clamshellSleepDisabled: sleepDisabled(from: powerSettingsOutput),
             preventsDisplaySleep: aquariumAssertionLines.contains { $0.contains("PreventUserIdleDisplaySleep") },
             preventsSystemSleep: aquariumAssertionLines.contains { $0.contains("PreventUserIdleSystemSleep") },
             declaresUserActive: aquariumAssertionLines.contains { $0.contains("UserIsActive") },
@@ -110,6 +113,8 @@ enum PrivilegedHelperInstaller {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        let standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        process.standardInput = standardInput
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -130,6 +135,18 @@ enum PrivilegedHelperInstaller {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { $0.hasPrefix("state = ") }?
             .replacingOccurrences(of: "state = ", with: "") ?? "未加载"
+    }
+
+    private static func sleepDisabled(from output: String) -> Bool {
+        for line in output.split(separator: "\n") {
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            if fields.count == 2,
+               fields[0] == "SleepDisabled",
+               fields[1] == "1" {
+                return true
+            }
+        }
+        return false
     }
 
     private static func latestLogLine() -> String? {
@@ -166,6 +183,8 @@ enum PrivilegedHelperInstaller {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", "do shell script \(appleScriptString(script)) with administrator privileges"]
+        let standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        process.standardInput = standardInput
 
         let pipe = Pipe()
         process.standardOutput = pipe

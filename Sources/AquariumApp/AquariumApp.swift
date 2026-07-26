@@ -153,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openGitHub() {
-        guard let url = URL(string: "https://github.com/ZimengXiong/aquarium") else { return }
+        guard let url = URL(string: "https://github.com/Caun1112/aquarium") else { return }
         NSWorkspace.shared.open(url)
     }
 }

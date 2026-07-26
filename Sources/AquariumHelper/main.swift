@@ -1,6 +1,8 @@
 import Foundation
 import Darwin
 import CoreGraphics
+import IOKit
+import IOKit.graphics
 import IOKit.ps
 import IOKit.pwr_mgt
 
@@ -46,6 +48,8 @@ func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 3)
     let process = Process()
     process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = arguments
+    let standardInput = FileHandle(forReadingAtPath: "/dev/null")
+    process.standardInput = standardInput
     let pipe = Pipe()
     process.standardOutput = pipe
     process.standardError = pipe
@@ -88,6 +92,8 @@ final class AquariumPolicyDaemon {
     private let configPath: String
     private var appliedDisablesleep: Bool?
     private var lastDisablesleepApply: Date?
+    private var lastDisablesleepAttempt: Date?
+    private var lastDisablesleepAttemptedValue: Bool?
     private var lastLidClosed: Bool?
     private var lastPolicySummary: String?
     private var preventUserIdleDisplaySleepAssertionID: IOPMAssertionID = 0
@@ -180,14 +186,31 @@ final class AquariumPolicyDaemon {
             return
         }
 
+        if rootDomainBoolProperty("SleepDisabled") == disabled {
+            appliedDisablesleep = disabled
+            lastDisablesleepApply = Date()
+            return
+        }
+
+        if appliedDisablesleep != disabled,
+           lastDisablesleepAttemptedValue == disabled,
+           let lastDisablesleepAttempt,
+           Date().timeIntervalSince(lastDisablesleepAttempt) < 30 {
+            return
+        }
+
+        lastDisablesleepAttemptedValue = disabled
+        lastDisablesleepAttempt = Date()
         let result = run("/usr/bin/pmset", ["-a", "disablesleep", disabled ? "1" : "0"])
-        if result.status == 0 {
+        let verifiedState = rootDomainBoolProperty("SleepDisabled")
+        if result.status == 0, verifiedState == nil || verifiedState == disabled {
             appliedDisablesleep = disabled
             lastDisablesleepApply = Date()
             log("pmset disablesleep \(disabled ? "1" : "0") -> \(result.status)")
         } else {
             let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            let suffix = detail.isEmpty ? "" : " output=\(detail)"
+            let verification = verifiedState.map { " verified=\($0 ? "1" : "0")" } ?? ""
+            let suffix = detail.isEmpty ? verification : " output=\(detail)\(verification)"
             log("pmset disablesleep \(disabled ? "1" : "0") -> \(result.status)\(suffix)")
         }
     }
@@ -331,8 +354,35 @@ final class AquariumPolicyDaemon {
 }
 
 private func isLidClosed() -> Bool {
+    if let closed = rootDomainBoolProperty("AppleClamshellState") {
+        return closed
+    }
+
     let output = run("/usr/sbin/ioreg", ["-r", "-k", "AppleClamshellState", "-d", "1"]).output
     return output.contains("\"AppleClamshellState\" = Yes")
+}
+
+private func rootDomainBoolProperty(_ key: String) -> Bool? {
+    guard let matching = IOServiceMatching("IOPMrootDomain") else { return nil }
+
+    let service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
+    guard service != IO_OBJECT_NULL else { return nil }
+    defer { IOObjectRelease(service) }
+
+    guard let unmanaged = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0) else {
+        return nil
+    }
+
+    let property = unmanaged.takeRetainedValue()
+    if CFGetTypeID(property) == CFBooleanGetTypeID() {
+        return CFBooleanGetValue((property as! CFBoolean))
+    }
+
+    if let number = property as? NSNumber {
+        return number.boolValue
+    }
+
+    return nil
 }
 
 private struct RunningProcess {
@@ -523,10 +573,7 @@ private func restoreBrightness() {
     guard !savedBrightness.isEmpty else { return }
 
     for (display, brightness) in savedBrightness {
-        let status = DisplayServicesSetBrightness(display, brightness)
-        if status != 0 {
-            log("brightness restore failed display=\(display) status=\(status)")
-        }
+        setBrightness(brightness, for: [display])
     }
 
     AquariumRuntimeState.clearBrightness()
@@ -600,20 +647,127 @@ private func logDisplaySnapshot(_ displays: [CGDirectDisplayID]) {
 private func brightness(for display: UInt32) -> Float? {
     var brightness: Float = 1
     let status = DisplayServicesGetBrightness(display, &brightness)
-    guard status == 0 else {
-        log("brightness read failed display=\(display) status=\(status)")
-        return nil
+    if status == 0 {
+        return brightness
     }
-    return brightness
+
+    if let iokitBrightness = iokitBrightness(for: display) {
+        return iokitBrightness
+    }
+
+    log("brightness read failed display=\(display) displayServicesStatus=\(status)")
+    return nil
 }
 
 private func setBrightness(_ value: Float, for displays: [UInt32]) {
     for display in displays {
-        let status = DisplayServicesSetBrightness(display, value)
-        if status != 0 {
-            log("brightness set failed display=\(display) value=\(value) status=\(status)")
+        let displayServicesStatus = DisplayServicesSetBrightness(display, value)
+        let iokitStatuses = setIOKitBrightness(value, for: display)
+        let iokitSucceeded = iokitStatuses.contains { $0.status == kIOReturnSuccess }
+
+        if displayServicesStatus != 0 && !iokitSucceeded {
+            let details = iokitStatuses
+                .map { "\($0.parameter)=\($0.status)" }
+                .joined(separator: ",")
+            log("brightness set failed display=\(display) value=\(value) displayServicesStatus=\(displayServicesStatus) iokit=[\(details)]")
+        } else if let current = brightness(for: display),
+                  abs(current - value) > 0.02,
+                  BrightnessDiagnostics.shared.shouldLogVerificationFailure(display: display) {
+            log("brightness verify mismatch display=\(display) target=\(value) current=\(current) displayServicesStatus=\(displayServicesStatus)")
         }
     }
+}
+
+private struct BrightnessSetStatus {
+    let parameter: String
+    let status: Int32
+}
+
+private final class BrightnessDiagnostics: @unchecked Sendable {
+    static let shared = BrightnessDiagnostics()
+
+    private let lock = NSLock()
+    private var lastVerificationLogByDisplay = [UInt32: Date]()
+
+    private init() {}
+
+    func shouldLogVerificationFailure(display: UInt32) -> Bool {
+        let now = Date()
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let last = lastVerificationLogByDisplay[display],
+           now.timeIntervalSince(last) < 30 {
+            return false
+        }
+        lastVerificationLogByDisplay[display] = now
+        return true
+    }
+}
+
+private func iokitBrightness(for display: UInt32) -> Float? {
+    guard let services = displayServices(for: display) else { return nil }
+    defer { services.release() }
+
+    for service in services.values {
+        for parameter in brightnessParameterNames {
+            var brightness: Float = 1
+            let status = IODisplayGetFloatParameter(service, 0, parameter as CFString, &brightness)
+            if status == kIOReturnSuccess {
+                return brightness
+            }
+        }
+    }
+
+    return nil
+}
+
+private func setIOKitBrightness(_ value: Float, for display: UInt32) -> [BrightnessSetStatus] {
+    guard let services = displayServices(for: display) else {
+        return [BrightnessSetStatus(parameter: "display-service", status: kIOReturnNotFound)]
+    }
+    defer { services.release() }
+
+    return services.values.flatMap { service in
+        brightnessParameterNames.map { parameter in
+            let status = IODisplaySetFloatParameter(service, 0, parameter as CFString, value)
+            return BrightnessSetStatus(parameter: parameter, status: status)
+        }
+    }
+}
+
+private let brightnessParameterNames = [
+    kIODisplayBrightnessKey,
+    kIODisplayLinearBrightnessKey
+]
+
+private struct DisplayServices {
+    let values: [io_service_t]
+
+    func release() {
+        for value in values where value != IO_OBJECT_NULL {
+            IOObjectRelease(value)
+        }
+    }
+}
+
+private func displayServices(for display: UInt32) -> DisplayServices? {
+    _ = display
+    guard let matching = IOServiceMatching("IODisplayConnect") else { return nil }
+
+    var services = [io_service_t]()
+    var iterator: io_iterator_t = IO_OBJECT_NULL
+    let status = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
+    guard status == kIOReturnSuccess else { return nil }
+    defer { IOObjectRelease(iterator) }
+
+    while true {
+        let service = IOIteratorNext(iterator)
+        guard service != IO_OBJECT_NULL else { break }
+        services.append(service)
+    }
+
+    return services.isEmpty ? nil : DisplayServices(values: services)
 }
 
 enum AquariumRuntimeState {
